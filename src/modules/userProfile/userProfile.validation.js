@@ -10,7 +10,7 @@ export const sendOtpSchema = Joi.object({
     'any.required': 'phoneNumber is required.',
     'string.empty': 'phoneNumber cannot be empty.',
   }),
-  email: Joi.string().email().required().messages({
+  email: Joi.string().email({ tlds: { allow: false } }).required().messages({
     'string.email': 'email must be a valid email address.',
     'any.required': 'email is required.',
     'string.empty': 'email cannot be empty.',
@@ -21,7 +21,7 @@ export const sendOtpSchema = Joi.object({
 // Schema: Verify OTP
 // ─────────────────────────────────────────────
 export const verifyOtpSchema = Joi.object({
-  email: Joi.string().email().required().messages({
+  email: Joi.string().email({ tlds: { allow: false } }).required().messages({
     'string.email': 'email must be a valid email address.',
     'any.required': 'email is required.',
     'string.empty': 'email cannot be empty.',
