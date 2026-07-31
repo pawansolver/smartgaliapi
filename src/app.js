@@ -54,6 +54,11 @@ app.use('/uploads', express.static(env.uploadsPath, {
   },
 }));
 
+// Health Check Route (Stops Render's 404 logs on GET /)
+app.get('/', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'SmartGali API is running' });
+});
+
 // API Routes
 app.use('/api/v1', routes);
 
