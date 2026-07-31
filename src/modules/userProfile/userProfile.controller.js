@@ -53,15 +53,36 @@ export const sendOTP = async (req, res, next) => {
     const cleanEmail = email.toLowerCase().trim();
     const cleanPhone = phoneNumber.trim();
 
-    const [user] = await User.findOrCreate({
-      where: { email: cleanEmail },
-      defaults: {
-        email: cleanEmail,
-        phone: cleanPhone,
-        userRole: 'resident',
-        userName: `user_${cleanEmail.split('@')[0]}`,
-      },
-    });
+    // ── Check if this phone is already registered to a DIFFERENT email ──
+    const existingPhoneUser = await User.findOne({ where: { phone: cleanPhone } });
+    if (existingPhoneUser && existingPhoneUser.email !== cleanEmail) {
+      return errorResponse(
+        res,
+        409,
+        'This phone number is already linked to a different account. Please use the email associated with this number, or use a different phone number.'
+      );
+    }
+
+    // ── Find existing user by email, or create a new one ──
+    let user;
+    try {
+      [user] = await User.findOrCreate({
+        where: { email: cleanEmail },
+        defaults: {
+          email: cleanEmail,
+          phone: cleanPhone,
+          userRole: 'resident',
+          userName: `user_${cleanEmail.split('@')[0]}`,
+        },
+      });
+    } catch (dbError) {
+      // Handle any remaining unique constraint race condition
+      if (dbError.name === 'SequelizeUniqueConstraintError') {
+        const field = dbError.errors?.[0]?.path || 'field';
+        return errorResponse(res, 409, `This ${field} is already registered. Please try logging in instead.`);
+      }
+      throw dbError;
+    }
 
     if (isUnavailableUser(user)) {
       return errorResponse(res, 403, 'This account is inactive or unavailable.');
