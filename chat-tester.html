@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartGali — Enterprise Chat Tester v2.0</title>
+  <!-- Socket.IO with multi-CDN fallback -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.min.js"></script>
+  <script>
+    if (typeof io === 'undefined') {
+      document.write('<script src="https://unpkg.com/socket.io-client@4.8.1/dist/socket.io.min.js"><\/script>');
+    }
+  </script>
+  <script>
+    if (typeof io === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.8.1/dist/socket.io.min.js"><\/script>');
+    }
+  </script>
+  <script>
+    if (typeof io === 'undefined') {
+      document.write('<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"><\/script>');
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary:    #080c14;
+      --bg-secondary:  #0d1220;
+      --bg-card:       #111827;
+      --bg-input:      #0d1220;
+      --border:        #1f2d45;
+      --border-bright: #2a3f5f;
+      --accent:        #3b82f6;
+      --accent-glow:   #3b82f620;
+      --success:       #10b981;
+      --success-glow:  #10b98120;
+      --warning:       #f59e0b;
+      --warning-glow:  #f59e0b20;
+      --danger:        #ef4444;
+      --danger-glow:   #ef444420;
+      --purple:        #8b5cf6;
+      --purple-glow:   #8b5cf620;
+      --text-primary:  #f1f5f9;
+      --text-secondary:#94a3b8;
+      --text-muted:    #475569;
+      --radius:        10px;
+      --radius-sm:     6px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; overflow: hidden; }
+    html { overflow: hidden; }
+
+    /* TOPBAR */
+    .topbar { height: 52px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 12px; position: relative; z-index: 100; }
+    .topbar-logo { font-size: 15px; font-weight: 700; color: var(--accent); letter-spacing: -0.3px; }
+    .topbar-badge { font-size: 10px; font-weight: 600; background: var(--accent-glow); color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 7px; letter-spacing: 0.5px; }
+    .topbar-spacer { flex: 1; }
+    .conn-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border-bright); color: var(--text-secondary); background: var(--bg-card); transition: all 0.3s; }
+    .conn-indicator .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: pulse-red 1.5s infinite; }
+    .conn-indicator.connected { border-color: var(--success); color: var(--success); background: var(--success-glow); }
+    .conn-indicator.connected .dot { background: var(--success); animation: pulse-green 2s infinite; }
+    @keyframes pulse-red   { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    @keyframes pulse-green { 0%,100%{opacity:1} 50%{opacity:0.7} }
+    .server-chip { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+    .server-chip code { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+    /* LAYOUT */
+    .layout { display: grid; grid-template-columns: 300px 1fr; height: calc(100vh - 52px); overflow: hidden; }
+
+    /* SIDEBAR */
+    .sidebar { background: var(--bg-secondary); border-right: 1px solid var(--border); overflow-y: auto; overflow-x: hidden; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 4px; }
+    .section-title { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); padding: 4px 4px 2px; }
+
+    /* STEP CARD — Collapsible accordion */
+    .step-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); transition: border-color 0.2s; flex-shrink: 0; }
+    .step-card.step-active { border-color: var(--accent); }
+    .step-card.step-done   { border-color: var(--success); }
+    .step-card.step-error  { border-color: var(--danger); }
+    .step-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #ffffff05; cursor: pointer; user-select: none; transition: background 0.15s; }
+    .step-head:hover { background: #ffffff0a; }
+    .step-card.expanded .step-head { border-bottom: 1px solid var(--border); }
+    .step-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; background: var(--border); color: var(--text-muted); flex-shrink: 0; transition: all 0.2s; }
+    .step-card.step-active .step-icon { background: var(--accent-glow); color: var(--accent); border: 1px solid var(--accent); }
+    .step-card.step-done   .step-icon { background: var(--success-glow); color: var(--success); border: 1px solid var(--success); }
+    .step-card.step-error  .step-icon { background: var(--danger-glow); color: var(--danger); border: 1px solid var(--danger); }
+    .step-title { font-size: 11px; font-weight: 600; flex: 1; }
+    .step-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; }
+    .step-chevron { font-size: 10px; color: var(--text-muted); transition: transform 0.2s; }
+    .step-card.expanded .step-chevron { transform: rotate(90deg); }
+    .step-body { padding: 8px 10px; display: none; flex-direction: column; gap: 6px; }
+    .step-card.expanded .step-body { display: flex; }
+
+    /* FORM */
+    label { font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.3px; text-transform: uppercase; display: block; }
+    input[type="text"], input[type="number"], input[type="password"] { width: 100%; padding: 6px 8px; background: var(--bg-input); border: 1px solid var(--border-bright); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 12px; font-family: 'Inter', sans-serif; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .btn { width: 100%; padding: 6px 10px; border: none; border-radius: var(--radius-sm); font-size: 11px; font-weight: 600; font-family: 'Inter', sans-serif; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 5px; letter-spacing: 0.2px; }
+    .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .btn:not(:disabled):hover { transform: translateY(-1px); filter: brightness(1.1); }
+    .btn:not(:disabled):active { transform: translateY(0); }
+    .btn-primary { background: var(--accent);   color: #fff; }
+    .btn-success { background: var(--success);  color: #000; }
+    .btn-danger  { background: var(--danger);   color: #fff; }
+    .btn-warning { background: var(--warning);  color: #000; }
+    .btn-purple  { background: var(--purple);   color: #fff; }
+    .btn-ghost   { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-bright); }
+    .btn-ghost:not(:disabled):hover { background: var(--bg-card); color: var(--text-primary); }
+    .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+    /* HINT */
+    .hint { font-size: 10px; color: var(--text-secondary); line-height: 1.4; padding: 4px 7px; border-radius: var(--radius-sm); border-left: 2px solid var(--border-bright); background: #ffffff04; }
+    .hint.warn  { border-color: var(--warning); color: var(--warning); background: var(--warning-glow); }
+    .hint.ok    { border-color: var(--success); color: var(--success); background: var(--success-glow); }
+    .hint.err   { border-color: var(--danger);  color: var(--danger);  background: var(--danger-glow); }
+    .hint.info  { border-color: var(--accent);  color: var(--accent);  background: var(--accent-glow); }
+
+    /* RESP BOX */
+    .resp-box { display: none; background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font-family: 'JetBrains Mono', monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all; max-height: 90px; overflow-y: auto; color: var(--text-muted); }
+    .resp-box.visible { display: block; }
+    .resp-box.ok-resp  { color: var(--success); border-color: var(--success); }
+    .resp-box.err-resp { color: var(--danger);  border-color: var(--danger); }
+
+    /* MAIN */
+    .main { display: flex; flex-direction: column; background: var(--bg-primary); overflow: hidden; min-height: 0; }
+    .main-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-secondary); padding: 0 16px; flex-shrink: 0; }
+    .tab-btn { padding: 12px 16px; font-size: 12px; font-weight: 500; color: var(--text-muted); border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; white-space: nowrap; }
+    .tab-btn:hover { color: var(--text-secondary); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-count { display: inline-flex; align-items: center; justify-content: center; background: var(--accent-glow); color: var(--accent); border-radius: 10px; min-width: 18px; height: 16px; font-size: 9px; font-weight: 700; padding: 0 5px; margin-left: 5px; }
+    .tab-panel { display: none; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+    .tab-panel.active { display: flex; }
+
+    /* LOG */
+    .log-toolbar { padding: 8px 14px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .log-toolbar-title { font-size: 11px; color: var(--text-muted); font-weight: 500; flex: 1; }
+    .clear-btn { font-size: 11px; color: var(--text-muted); background: transparent; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px 9px; cursor: pointer; transition: all 0.15s; }
+    .clear-btn:hover { color: var(--danger); border-color: var(--danger); }
+    .log-area { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+    .log-area::-webkit-scrollbar { width: 4px; }
+    .log-area::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 4px; }
+
+    .log-entry { border-radius: var(--radius-sm); padding: 8px 12px; border-left: 3px solid var(--border-bright); background: var(--bg-card); animation: slideIn 0.2s ease; }
+    @keyframes slideIn { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
+    .log-entry.log-system    { border-left-color: var(--warning); }
+    .log-entry.log-sent      { border-left-color: var(--success); }
+    .log-entry.log-received  { border-left-color: var(--accent); background: #0d1a2e; }
+    .log-entry.log-error     { border-left-color: var(--danger); background: #1a0d0d; }
+    .log-entry.log-realtime  { border-left-color: var(--purple); background: linear-gradient(135deg, #1a0d2e, #0d1220); box-shadow: 0 0 0 1px var(--purple-glow), 0 2px 8px var(--purple-glow); }
+    .log-entry.log-info      { border-left-color: var(--accent); background: #0d1520; }
+    .log-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .log-tag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 1px 6px; border-radius: 3px; }
+    .log-entry.log-system    .log-tag { background: var(--warning-glow); color: var(--warning); }
+    .log-entry.log-sent      .log-tag { background: var(--success-glow); color: var(--success); }
+    .log-entry.log-received  .log-tag { background: var(--accent-glow);  color: var(--accent); }
+    .log-entry.log-error     .log-tag { background: var(--danger-glow);  color: var(--danger); }
+    .log-entry.log-realtime  .log-tag { background: var(--purple-glow);  color: var(--purple); }
+    .log-entry.log-info      .log-tag { background: var(--accent-glow);  color: var(--accent); }
+    .log-event-name { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
+    .log-ts { font-size: 10px; color: var(--text-muted); margin-left: auto; font-family: 'JetBrains Mono', monospace; }
+    .log-body { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-secondary); white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
+    .log-entry.log-realtime .log-body { color: #c4b5fd; }
+    .log-entry.log-error    .log-body { color: #fca5a5; }
+
+    /* SEND BAR */
+    .send-bar { padding: 10px 14px; background: var(--bg-secondary); border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+    .send-context { font-size: 10px; color: var(--text-muted); white-space: nowrap; padding: 4px 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+    .send-context span { color: var(--accent); font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .send-bar input { flex: 1; padding: 9px 13px; background: var(--bg-card); border: 1px solid var(--border-bright); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px; font-family: 'Inter', sans-serif; outline: none; transition: border-color 0.2s; }
+    .send-bar input:focus { border-color: var(--accent); }
+    .send-bar button { padding: 9px 18px; background: var(--accent); border: none; border-radius: var(--radius-sm); color: #fff; font-weight: 600; cursor: pointer; font-size: 12px; font-family: 'Inter', sans-serif; transition: all 0.15s; }
+    .send-bar button:hover { background: #2563eb; }
+
+    /* DIAGNOSTICS */
+    .diag-full { padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; flex: 1; min-height: 0; }
+    .diag-full::-webkit-scrollbar { width: 4px; }
+    .diag-full::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 4px; }
+    .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .info-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+    .info-card-title { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    .info-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 5px 0; border-bottom: 1px solid var(--border); gap: 8px; }
+    .info-row:last-child { border-bottom: none; }
+    .info-key { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+    .info-val { font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; text-align: right; word-break: break-all; }
+    .info-val.ok     { color: var(--success); }
+    .info-val.err    { color: var(--danger); }
+    .info-val.warn   { color: var(--warning); }
+    .info-val.accent { color: var(--accent); }
+
+    /* Socket log tab */
+    .socket-log-entry { display: flex; gap: 8px; align-items: flex-start; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
+    .socket-log-entry:last-child { border-bottom: none; }
+    .socket-log-time { color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 10px; flex-shrink: 0; }
+    .socket-log-dir { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; }
+    .socket-log-dir.up   { background: var(--success-glow); color: var(--success); }
+    .socket-log-dir.down { background: var(--accent-glow); color: var(--accent); }
+    .socket-log-event { color: var(--text-secondary); flex: 1; }
+  </style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <span class="topbar-logo">&#9889; SmartGali</span>
+  <span class="topbar-badge">ENTERPRISE TESTER v2.0</span>
+  <div class="conn-indicator" id="connIndicator">
+    <span class="dot"></span>
+    <span id="connLabel">Disconnected</span>
+  </div>
+  <div class="topbar-spacer"></div>
+  <div class="server-chip">Server: <code id="serverUrlDisplay">localhost:5000</code></div>
+</header>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <div class="section-title">&#9881; Configuration</div>
+    <div class="step-card expanded">
+      <div class="step-head" onclick="toggleCard(this)">
+        <div class="step-icon" style="background:var(--accent-glow);color:var(--accent);border:1px solid var(--accent);">&#9881;</div>
+        <div class="step-title">Configuration</div>
+        <span class="step-chevron">&#9654;</span>
+      </div>
+      <div class="step-body">
+        <label>Server URL</label>
+        <input type="text" id="serverUrl" value="http://localhost:5000" />
+        <label>Your User ID (This Tab)</label>
+        <input type="number" id="myUserId" value="1" min="1" />
+        <label>Target User ID</label>
+        <input type="number" id="targetUserId" value="2" min="1" />
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="checkHealth()" id="btnHealth">&#128269; Health Check</button>
+          <button class="btn btn-ghost" onclick="resetAll()">&#8617; Reset All</button>
+        </div>
+        <div class="resp-box" id="resp-health"></div>
+      </div>
+    </div>
+
+    <div class="section-title">&#128203; Steps — Follow In Order</div>
+
+    <!-- Step 1: Create/Get Chat -->
+    <div class="step-card expanded" id="card-s1">
+      <div class="step-head" onclick="toggleCard(this)">
+        <div class="step-icon" id="icon-s1">1</div>
+        <div class="step-title">Create / Get Chat</div>
+        <span class="step-badge" id="badge-s1" style="display:none; background:var(--success-glow); color:var(--success);">&#10003;</span>
+        <span class="step-chevron">&#9654;</span>
+      </div>
+      <div class="step-body" id="body-s1">
+        <div class="hint warn">&#9888; Chat pehle DB mein honi chahiye!</div>
+        <button class="btn btn-primary" onclick="createChat()">&#10133; Create 1-to-1 Chat</button>
+        <div class="resp-box" id="resp-createChat"></div>
+        <div style="font-size:10px; color:var(--text-muted); text-align:center;">— OR enter existing Chat ID —</div>
+        <label>Existing Chat ID</label>
+        <div class="input-row">
+          <input type="number" id="chatId" value="1" placeholder="Chat ID" />
+          <button class="btn btn-ghost" onclick="manualSetChat()">Use This</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Connect Socket -->
+    <div class="step-card" id="card-s2">
+      <div class="step-head" onclick="toggleCard(this)">
+        <div class="step-icon" id="icon-s2">2</div>
+        <div class="step-title">Connect WebSocket</div>
+        <span class="step-badge" id="badge-s2" style="display:none; background:var(--success-glow); color:var(--success);">&#10003;</span>
+        <span class="step-chevron">&#9654;</span>
+      </div>
+      <div class="step-body" id="body-s2">
+        <div class="hint info">&#8505; Dono tabs mein alag-alag User ID se connect karo</div>
+        <div class="btn-row">
+          <button class="btn btn-success" id="btnConnect" onclick="connectSocket()">&#128268; Connect</button>
+          <button class="btn btn-danger" id="btnDisconnect" disabled onclick="disconnectSocket()">&#9986; Disconnect</button>
+        </div>
+        <div id="socketStatus" style="display:none;" class="hint ok"></div>
+      </div>
+    </div>
+
+    <!-- Step 3: Join Room -->
+    <div class="step-card" id="card-s3">
+      <div class="step-head" onclick="toggleCard(this)">
+        <div class="step-icon" id="icon-s3">3</div>
+        <div class="step-title">Join Chat Room</div>
+        <span class="step-badge" id="badge-s3" style="display:none; background:var(--success-glow); color:var(--success);">&#10003;</span>
+        <span class="step-chevron">&#9654;</span>
+      </div>
+      <div class="step-body" id="body-s3">
+        <div class="hint">Chat room join karo for real-time messages</div>
+        <label>Chat ID to Join</label>
+        <input type="number" id="joinChatId" value="1" />
+        <div class="btn-row">
+          <button class="btn btn-purple" id="btnJoin" disabled onclick="joinRoom()">&#128682; Join Room</button>
+          <button class="btn btn-warning" id="btnLeave" disabled onclick="leaveRoom()">&#128694; Leave</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: Send Message -->
+    <div class="step-card" id="card-s4">
+      <div class="step-head" onclick="toggleCard(this)">
+        <div class="step-icon" id="icon-s4">4</div>
+        <div class="step-title">Send Message (REST)</div>
+        <span class="step-chevron">&#9654;</span>
+      </div>
+      <div class="step-body" id="body-s4">
+        <div class="hint ok">&#9989; Send karo → doosri tab mein real-time aayega!</div>
+        <div class="input-row">
+          <div><label>Chat ID</label><input type="number" id="httpChatId" value="1" /></div>
+          <div><label>Sender ID</label><input type="number" id="httpSenderId" value="1" /></div>
+        </div>
+        <label style="margin-top:5px;">Message Text</label>
+        <input type="text" id="httpMsg" value="Hello Real-Time! &#128075;" />
+        <button class="btn btn-success" onclick="sendHTTPMessage()">&#128228; Send via REST API</button>
+        <div class="resp-box" id="resp-sendMsg"></div>
+      </div>
+    </div>
+
+    <!-- Step 5: Typing -->
+    <div class="step-card">
+      <div class="step-head" onclick="toggleCard(this)">
+        <div class="step-icon">5</div>
+        <div class="step-title">Typing Indicator</div>
+        <span class="step-chevron">&#9654;</span>
+      </div>
+      <div class="step-body" id="body-s5">
+        <div class="hint">Doosri tab pe typing indicator test karo</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnTypingOn" disabled onclick="sendTyping(true)">&#9997; Typing ON</button>
+          <button class="btn btn-ghost" id="btnTypingOff" disabled onclick="sendTyping(false)">&#128721; Typing OFF</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 6: Mark Read -->
+    <div class="step-card">
+      <div class="step-head" onclick="toggleCard(this)">
+        <div class="step-icon">6</div>
+        <div class="step-title">Mark All Read</div>
+        <span class="step-chevron">&#9654;</span>
+      </div>
+      <div class="step-body" id="body-s6">
+        <div class="input-row">
+          <div><label>Chat ID</label><input type="number" id="markReadChatId" value="1" /></div>
+          <div><label>Reader User ID</label><input type="number" id="markReadUserId" value="2" /></div>
+        </div>
+        <button class="btn btn-warning" onclick="markAllRead()">&#9989; Mark All Read</button>
+        <div class="resp-box" id="resp-markRead"></div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <nav class="main-tabs">
+      <button class="tab-btn active" onclick="switchTab('events')" id="tab-events">
+        &#128225; Event Log <span class="tab-count" id="eventCount">0</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('realtime')" id="tab-realtime">
+        &#128293; Real-Time Msgs <span class="tab-count" id="rtCount">0</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('socket')" id="tab-socket">
+        &#128268; Socket Events <span class="tab-count" id="socketCount">0</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('diag')" id="tab-diag">
+        &#129657; Diagnostics
+      </button>
+    </nav>
+
+    <!-- Event Log Tab -->
+    <div class="tab-panel active" id="panel-events">
+      <div class="log-toolbar">
+        <span class="log-toolbar-title">All HTTP + Socket Events</span>
+        <button class="clear-btn" onclick="clearLog('eventLog', 'eventCount')">Clear</button>
+      </div>
+      <div class="log-area" id="eventLog">
+        <div class="log-entry log-system">
+          <div class="log-header">
+            <span class="log-tag">GUIDE</span>
+            <span class="log-event-name">SmartGali Enterprise Chat Tester v2.0</span>
+            <span class="log-ts" id="startTs"></span>
+          </div>
+          <div class="log-body">Follow Steps 1 to 4 in the left sidebar in order.
+Open this file in 2 browser tabs (Tab A = User 1, Tab B = User 2).
+Both tabs must Join the same Chat Room (Step 3) for real-time delivery!
+
+IMPORTANT: Create Chat (Step 1) MUST be done before connecting socket.
+TIP: Use "Existing Chat ID" field if chat already exists in your DB.
+TIP: Open via Live Server extension in VS Code for best results!</div>
+        </div>
+      </div>
+      <div class="send-bar">
+        <div class="send-context">Chat ID: <span id="activeChatLabel">-</span></div>
+        <input id="msgInput" type="text" placeholder="Quick send: type message and press Enter..." />
+        <button onclick="sendBarMsg()">Send &uarr;</button>
+      </div>
+    </div>
+
+    <!-- Real-Time Messages Tab -->
+    <div class="tab-panel" id="panel-realtime">
+      <div class="log-toolbar">
+        <span class="log-toolbar-title">&#128293; Only real-time socket messages appear here</span>
+        <button class="clear-btn" onclick="clearLog('realtimeLog', 'rtCount')">Clear</button>
+      </div>
+      <div class="log-area" id="realtimeLog">
+        <div class="log-entry log-info">
+          <div class="log-header">
+            <span class="log-tag">WAITING</span>
+            <span class="log-event-name">Waiting for real-time messages...</span>
+          </div>
+          <div class="log-body">Complete Steps 1-2-3, then send a message from the OTHER tab.
+The chat:message socket event will appear here instantly!</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Socket Events Tab -->
+    <div class="tab-panel" id="panel-socket">
+      <div class="log-toolbar">
+        <span class="log-toolbar-title">Raw Socket.IO emit / on events</span>
+        <button class="clear-btn" onclick="clearSocketLog()">Clear</button>
+      </div>
+      <div class="log-area" id="socketLog" style="font-size:11px;">
+        <div style="color:var(--text-muted);">Socket events will appear here once connected...</div>
+      </div>
+    </div>
+
+    <!-- Diagnostics Tab -->
+    <div class="tab-panel" id="panel-diag">
+      <div class="diag-full">
+        <div class="diag-grid">
+          <div class="info-card">
+            <div class="info-card-title">&#128268; Connection Status</div>
+            <div class="info-row"><span class="info-key">Socket ID</span><span class="info-val accent" id="d-socketId">—</span></div>
+            <div class="info-row"><span class="info-key">Transport</span><span class="info-val" id="d-transport">—</span></div>
+            <div class="info-row"><span class="info-key">Status</span><span class="info-val err" id="d-status">Disconnected</span></div>
+            <div class="info-row"><span class="info-key">Reconnect Attempts</span><span class="info-val" id="d-reconnects">0</span></div>
+            <div class="info-row"><span class="info-key">Connected Since</span><span class="info-val" id="d-connSince">—</span></div>
+          </div>
+          <div class="info-card">
+            <div class="info-card-title">&#128100; Session Info</div>
+            <div class="info-row"><span class="info-key">Your User ID</span><span class="info-val accent" id="d-myId">—</span></div>
+            <div class="info-row"><span class="info-key">Target User ID</span><span class="info-val" id="d-targetId">—</span></div>
+            <div class="info-row"><span class="info-key">Active Chat ID</span><span class="info-val accent" id="d-chatId">—</span></div>
+            <div class="info-row"><span class="info-key">Room Joined</span><span class="info-val err" id="d-roomJoined">No</span></div>
+            <div class="info-row"><span class="info-key">Messages Sent</span><span class="info-val" id="d-sent">0</span></div>
+            <div class="info-row"><span class="info-key">Messages Received</span><span class="info-val" id="d-received">0</span></div>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="info-card-title">&#127760; Server / API Diagnostics</div>
+          <div class="info-row"><span class="info-key">Server URL</span><span class="info-val accent" id="d-serverUrl">—</span></div>
+          <div class="info-row"><span class="info-key">Last Health Check</span><span class="info-val" id="d-lastHealth">Not done yet — Click Health Check button</span></div>
+          <div class="info-row"><span class="info-key">Server Status</span><span class="info-val err" id="d-serverStatus">Unknown</span></div>
+          <div class="info-row"><span class="info-key">Last HTTP Status</span><span class="info-val" id="d-lastHttp">—</span></div>
+          <div class="info-row"><span class="info-key">Socket.IO CDN</span><span class="info-val ok">Loaded v4.8.1</span></div>
+        </div>
+
+        <div class="info-card">
+          <div class="info-card-title">&#128295; Debug Checklist — If Socket Won't Connect</div>
+          <div class="info-row"><span class="info-key">&#9989; Fix 1</span><span class="info-val">Run server: <code style="color:var(--accent)">npm run dev</code> in smartgaliAPI folder</span></div>
+          <div class="info-row"><span class="info-key">&#9989; Fix 2</span><span class="info-val">Check server port = 5000 (see .env file: PORT=5000)</span></div>
+          <div class="info-row"><span class="info-key">&#9989; Fix 3</span><span class="info-val">Open file via <code style="color:var(--warning)">Live Server</code> VS Code extension — NOT from file:// protocol</span></div>
+          <div class="info-row"><span class="info-key">&#9989; Fix 4</span><span class="info-val">Press F12 → Console tab for detailed Socket.IO error messages</span></div>
+          <div class="info-row"><span class="info-key">&#9989; Fix 5</span><span class="info-val">Both tabs MUST join SAME chat room (Step 3) for real-time to work</span></div>
+          <div class="info-row" style="padding-top:8px;">
+            <button class="btn btn-primary" style="width:auto; padding: 7px 16px;" onclick="runFullDiag()">&#129657; Run Full Diagnostics</button>
+          </div>
+        </div>
+
+        <div class="info-card" id="diagOutput" style="display:none;">
+          <div class="info-card-title">&#128203; Diagnostic Results</div>
+          <div id="diagResults" style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-secondary); white-space:pre-wrap; line-height:1.7;"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // ═══════════════════════════════════════════════
+  // STATE
+  // ═══════════════════════════════════════════════
+  let socket = null;
+  let activeChatId = null;
+  let roomJoined = false;
+  let reconnectCount = 0;
+  let connectedSince = null;
+  let stats = { sent: 0, received: 0 };
+  let eventLogCount = 0, rtLogCount = 0, socketLogCount = 0;
+
+  const el = (id) => document.getElementById(id);
+  const ts = () => new Date().toLocaleTimeString('en-IN', { hour12: false });
+  const getServerUrl = () => el('serverUrl').value.trim().replace(/\/$/, '');
+  const BASE = () => getServerUrl() + '/api/v1';
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // Set start timestamp
+  el('startTs').textContent = new Date().toLocaleString('en-IN');
+
+  // ═══════════════════════════════════════════════
+  // ACCORDION TOGGLE
+  // ═══════════════════════════════════════════════
+  function toggleCard(headEl) {
+    const card = headEl.closest('.step-card');
+    if (!card) return;
+    const isExpanded = card.classList.contains('expanded');
+    // Collapse all cards in sidebar
+    document.querySelectorAll('.sidebar .step-card').forEach(c => c.classList.remove('expanded'));
+    // Toggle clicked card
+    if (!isExpanded) {
+      card.classList.add('expanded');
+      // Scroll card into view in sidebar
+      setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  // LOGGING
+  // ═══════════════════════════════════════════════
+  function log(type, event, data, targetLog = 'eventLog', countId = 'eventCount') {
+    const area = el(targetLog);
+    if (!area) return;
+    const entry = document.createElement('div');
+    entry.className = 'log-entry log-' + type;
+    const content = (data === null || data === undefined) ? ''
+      : (typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data));
+    entry.innerHTML =
+      '<div class="log-header">' +
+        '<span class="log-tag">' + escHtml(type.toUpperCase()) + '</span>' +
+        '<span class="log-event-name">' + escHtml(event) + '</span>' +
+        '<span class="log-ts">' + ts() + '</span>' +
+      '</div>' +
+      (content ? '<div class="log-body">' + escHtml(content) + '</div>' : '');
+    area.appendChild(entry);
+    area.scrollTop = area.scrollHeight;
+    const cEl = el(countId);
+    if (cEl) {
+      if (countId === 'eventCount') eventLogCount++;
+      else if (countId === 'rtCount') rtLogCount++;
+      else if (countId === 'socketCount') socketLogCount++;
+      cEl.textContent = (countId === 'eventCount' ? eventLogCount : countId === 'rtCount' ? rtLogCount : socketLogCount);
+    }
+  }
+
+  function logRealTime(msg) {
+    const area = el('realtimeLog');
+    const entry = document.createElement('div');
+    entry.className = 'log-entry log-realtime';
+    const content = typeof msg === 'object' ? JSON.stringify(msg, null, 2) : String(msg);
+    entry.innerHTML =
+      '<div class="log-header">' +
+        '<span class="log-tag">&#128293; LIVE</span>' +
+        '<span class="log-event-name">chat:message received — Socket.IO Working!</span>' +
+        '<span class="log-ts">' + ts() + '</span>' +
+      '</div>' +
+      '<div class="log-body">' + escHtml(content) + '</div>';
+    area.appendChild(entry);
+    area.scrollTop = area.scrollHeight;
+    rtLogCount++;
+    el('rtCount').textContent = rtLogCount;
+    stats.received++;
+    el('d-received').textContent = stats.received;
+    // Also log to main event log
+    log('received', 'chat:message (REAL-TIME)', msg, 'eventLog', 'eventCount');
+    // Flash the realtime tab button
+    const tabBtn = el('tab-realtime');
+    tabBtn.style.color = 'var(--purple)';
+    setTimeout(() => { tabBtn.style.color = ''; }, 1000);
+  }
+
+  function logSocket(dir, event, data) {
+    const area = el('socketLog');
+    const entry = document.createElement('div');
+    entry.className = 'socket-log-entry';
+    const content = data ? (typeof data === 'object' ? JSON.stringify(data) : String(data)) : '';
+    entry.innerHTML =
+      '<span class="socket-log-time">' + ts() + '</span>' +
+      '<span class="socket-log-dir ' + (dir === 'up' ? 'up' : 'down') + '">' + (dir === 'up' ? '&#8593; EMIT' : '&#8595; ON') + '</span>' +
+      '<span class="socket-log-event"><strong>' + escHtml(event) + '</strong>' +
+        (content ? ' &mdash; <span style="color:var(--text-muted)">' + escHtml(content.slice(0,100)) + (content.length > 100 ? '&hellip;' : '') + '</span>' : '') +
+      '</span>';
+    area.appendChild(entry);
+    area.scrollTop = area.scrollHeight;
+    socketLogCount++;
+    el('socketCount').textContent = socketLogCount;
+  }
+
+  function showResp(id, data, isError) {
+    const box = el(id);
+    if (!box) return;
+    box.textContent = typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data);
+    box.className = 'resp-box visible ' + (isError ? 'err-resp' : 'ok-resp');
+  }
+
+  function clearLog(logId, countId) {
+    el(logId).innerHTML = '';
+    if (countId === 'eventCount') { eventLogCount = 0; }
+    else if (countId === 'rtCount') { rtLogCount = 0; }
+    el(countId).textContent = '0';
+  }
+
+  function clearSocketLog() {
+    el('socketLog').innerHTML = '<div style="color:var(--text-muted);">Socket events will appear here once connected...</div>';
+    socketLogCount = 0; el('socketCount').textContent = '0';
+  }
+
+  // ═══════════════════════════════════════════════
+  // CARD STATE
+  // ═══════════════════════════════════════════════
+  function setCardState(card, state) {
+    const c = el('card-s' + card);
+    const icon = el('icon-s' + card);
+    const badge = el('badge-s' + card);
+    if (!c) return;
+    // Preserve expanded class if it was set
+    const wasExpanded = c.classList.contains('expanded');
+    c.className = 'step-card' + (state ? ' step-' + state : '');
+    // Auto-expand active cards, keep expanded if it was
+    if (state === 'active') {
+      document.querySelectorAll('.sidebar .step-card').forEach(sc => sc.classList.remove('expanded'));
+      c.classList.add('expanded');
+      setTimeout(() => c.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+    } else if (wasExpanded) {
+      c.classList.add('expanded');
+    }
+    if (icon) icon.textContent = state === 'done' ? '&#10003;' : card;
+    if (badge) badge.style.display = state === 'done' ? 'inline-block' : 'none';
+  }
+
+  function updateActiveChatId(cid) {
+    activeChatId = cid;
+    el('joinChatId').value     = cid;
+    el('httpChatId').value     = cid;
+    el('markReadChatId').value = cid;
+    el('activeChatLabel').textContent = cid;
+    el('d-chatId').textContent = cid;
+    setCardState(1, 'done');
+    setCardState(2, 'active');
+  }
+
+  function manualSetChat() {
+    const cid = parseInt(el('chatId').value);
+    if (!cid || cid < 1) { log('error', 'Invalid Chat ID', 'Enter a valid Chat ID > 0'); return; }
+    updateActiveChatId(cid);
+    log('info', 'Chat ID manually set to ' + cid, null);
+  }
+
+  // ═══════════════════════════════════════════════
+  // TAB SWITCHING
+  // ═══════════════════════════════════════════════
+  function switchTab(name) {
+    ['events','realtime','socket','diag'].forEach(t => {
+      el('panel-' + t).classList.toggle('active', t === name);
+      el('tab-' + t).classList.toggle('active', t === name);
+    });
+  }
+
+  // ═══════════════════════════════════════════════
+  // HEALTH CHECK
+  // ═══════════════════════════════════════════════
+  async function checkHealth() {
+    const btn = el('btnHealth');
+    btn.textContent = '&#9203; Checking...';
+    btn.disabled = true;
+    const url = BASE() + '/health';
+    el('d-serverUrl').textContent = getServerUrl();
+    el('serverUrlDisplay').textContent = getServerUrl().replace('http://','');
+    log('info', 'GET /health', url);
+    try {
+      const r = await fetch(url);
+      const d = await r.json();
+      showResp('resp-health', d, !r.ok);
+      log(r.ok ? 'sent' : 'error', 'GET /health Response', d);
+      el('d-lastHealth').textContent = ts();
+      el('d-serverStatus').textContent = r.ok ? 'Online' : 'Error ' + r.status;
+      el('d-serverStatus').className = 'info-val ' + (r.ok ? 'ok' : 'err');
+      el('d-lastHttp').textContent = r.status + ' ' + r.statusText;
+      if (r.ok) {
+        setCardState(1, 'active');
+        log('system', 'Server is Online! Now proceed to Step 1 (Create Chat)', null);
+      }
+    } catch(e) {
+      showResp('resp-health',
+        'Cannot reach server!\n\n' + e.message +
+        '\n\nSolutions:\n1. Run: npm run dev  (in smartgaliAPI folder)\n2. Check PORT=5000 in .env file\n3. Open this HTML via Live Server, not from file://', true);
+      log('error', 'Server Unreachable', e.message);
+      el('d-serverStatus').textContent = 'Offline';
+      el('d-serverStatus').className = 'info-val err';
+    } finally {
+      btn.textContent = '&#128269; Health Check';
+      btn.disabled = false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  // STEP 1: CREATE CHAT
+  // ═══════════════════════════════════════════════
+  async function createChat() {
+    const uid = parseInt(el('myUserId').value);
+    const tid = parseInt(el('targetUserId').value);
+    if (!uid || !tid) { showResp('resp-createChat', 'Enter valid User IDs first!', true); return; }
+    if (uid === tid) { showResp('resp-createChat', 'Your User ID and Target User ID must be DIFFERENT!', true); return; }
+    try {
+      const payload = { userId: uid, targetUserId: tid, created_by: uid };
+      log('sent', 'POST /chat/one-to-one', payload);
+      const r = await fetch(BASE() + '/chat/one-to-one', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json();
+      showResp('resp-createChat', d, !r.ok);
+      log(r.ok ? 'sent' : 'error', 'POST /chat/one-to-one Response', d);
+      el('d-lastHttp').textContent = r.status + ' ' + r.statusText;
+      if (r.ok && d.data && d.data.id) {
+        updateActiveChatId(d.data.id);
+        el('httpSenderId').value = uid;
+        el('d-myId').textContent = uid;
+        el('d-targetId').textContent = tid;
+        log('system', 'Chat ready! ID: ' + d.data.id + ' — Now go to Step 2: Connect Socket', null);
+      }
+    } catch(e) {
+      showResp('resp-createChat', 'ERROR: ' + e.message, true);
+      log('error', 'Create Chat Failed', e.message);
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  // STEP 2: CONNECT SOCKET
+  // ═══════════════════════════════════════════════
+  function connectSocket() {
+    if (socket && socket.connected) {
+      log('system', 'Already Connected', 'Socket ID: ' + socket.id); return;
+    }
+    if (socket) { socket.disconnect(); socket = null; }
+
+    const serverUrl = getServerUrl();
+    const uid = parseInt(el('myUserId').value);
+
+    // Guard: check if Socket.IO library loaded
+    if (typeof io === 'undefined') {
+      log('error', 'Socket.IO Library NOT Loaded!',
+        'socket.io.min.js CDN se load nahi hua!\n\n' +
+        'Solutions:\n' +
+        '1. Internet connection check karo\n' +
+        '2. Server se hi load karo: npm install socket.io-client\n' +
+        '3. Browser cache clear karo (Ctrl+Shift+Del)\n' +
+        '4. VPN/Firewall disable karke try karo');
+      el('btnConnect').textContent = '&#128268; Connect';
+      el('btnConnect').disabled = false;
+      return;
+    }
+
+    log('info', 'Connecting to Socket.IO...', serverUrl);
+    el('btnConnect').textContent = '&#9203; Connecting...';
+    el('btnConnect').disabled = true;
+
+    socket = io(serverUrl, {
+      transports: ['websocket', 'polling'],
+      timeout: 8000,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1500,
+    });
+
+    // CONNECTED
+    socket.on('connect', () => {
+      connectedSince = new Date();
+      el('connIndicator').className = 'conn-indicator connected';
+      el('connLabel').textContent = 'Connected · ' + socket.id.slice(0,10) + '...';
+      el('btnConnect').textContent = '&#128268; Connect';
+      el('btnConnect').disabled = false;
+      el('btnDisconnect').disabled = false;
+      el('btnJoin').disabled = false;
+      el('btnLeave').disabled = false;
+      el('btnTypingOn').disabled = false;
+      el('btnTypingOff').disabled = false;
+
+      // Update diagnostics
+      el('d-socketId').textContent = socket.id;
+      el('d-transport').textContent = socket.io.engine.transport.name;
+      el('d-status').textContent = 'Connected';
+      el('d-status').className = 'info-val ok';
+      el('d-connSince').textContent = connectedSince.toLocaleTimeString('en-IN');
+      el('d-myId').textContent = uid;
+
+      // Emit user online event
+      socket.emit('user:online', { userId: uid });
+      logSocket('up', 'user:online', { userId: uid });
+
+      const statusBox = el('socketStatus');
+      statusBox.style.display = '';
+      statusBox.textContent = 'Connected — Socket ID: ' + socket.id + ' | Transport: ' + socket.io.engine.transport.name;
+
+      setCardState(2, 'done');
+      setCardState(3, 'active');
+      log('sent', 'EMIT user:online', { userId: uid });
+      log('system', 'Socket Connected! ID: ' + socket.id + ' — Now proceed to Step 3: Join Room', null);
+    });
+
+    // DISCONNECT
+    socket.on('disconnect', (reason) => {
+      el('connIndicator').className = 'conn-indicator';
+      el('connLabel').textContent = 'Disconnected';
+      el('btnConnect').textContent = '&#128268; Connect';
+      el('btnConnect').disabled = false;
+      ['btnDisconnect','btnJoin','btnLeave','btnTypingOn','btnTypingOff'].forEach(id => el(id).disabled = true);
+      el('d-status').textContent = 'Disconnected';
+      el('d-status').className = 'info-val err';
+      el('socketStatus').style.display = 'none';
+      roomJoined = false;
+      el('d-roomJoined').textContent = 'No';
+      el('d-roomJoined').className = 'info-val err';
+      log('error', 'Socket Disconnected', 'Reason: ' + reason);
+      logSocket('down', 'disconnect', reason);
+    });
+
+    // CONNECT ERROR
+    socket.on('connect_error', (err) => {
+      el('btnConnect').textContent = '&#128268; Connect';
+      el('btnConnect').disabled = false;
+      log('error', 'Socket Connection Error', err.message +
+        '\n\nPossible causes:\n• Server not running → Run: npm run dev\n• Wrong port → Check Server URL above\n• file:// protocol → Open via Live Server in VS Code');
+      el('d-status').textContent = 'Error: ' + err.message.slice(0, 40);
+      el('d-status').className = 'info-val err';
+    });
+
+    // RECONNECT
+    socket.io.on('reconnect_attempt', (n) => {
+      reconnectCount = n;
+      el('d-reconnects').textContent = n;
+      log('system', 'Reconnect Attempt #' + n, null);
+    });
+
+    // INCOMING EVENTS
+    socket.on('presence:online',   (d) => { log('received', '&#128994; presence:online', d);    logSocket('down', 'presence:online', d); });
+    socket.on('presence:offline',  (d) => { log('received', '&#128308; presence:offline', d);   logSocket('down', 'presence:offline', d); });
+    socket.on('message:delivered', (d) => { log('received', '&#9989; message:delivered', d);   logSocket('down', 'message:delivered', d); });
+    socket.on('chat:typing',       (d) => { log('received', '&#9997; chat:typing', d);          logSocket('down', 'chat:typing', d); });
+
+    // THE MAIN REAL-TIME EVENT
+    socket.on('chat:message', (msg) => {
+      logRealTime(msg);
+      logSocket('down', 'chat:message', msg);
+    });
+  }
+
+  function disconnectSocket() {
+    if (socket) socket.disconnect();
+  }
+
+  // ═══════════════════════════════════════════════
+  // STEP 3: JOIN / LEAVE ROOM
+  // ═══════════════════════════════════════════════
+  function joinRoom() {
+    if (!socket || !socket.connected) { log('error', 'Not Connected', 'Connect socket first (Step 2)'); return; }
+    const cid = parseInt(el('joinChatId').value);
+    if (!cid || cid < 1) { log('error', 'Invalid Chat ID', 'Enter a valid Chat ID in the Step 3 field'); return; }
+
+    socket.emit('user:join:chat', { chatId: cid });
+    updateActiveChatId(cid);
+    roomJoined = true;
+    el('d-roomJoined').textContent = 'Yes — chat:' + cid;
+    el('d-roomJoined').className = 'info-val ok';
+    setCardState(3, 'done');
+    setCardState(4, 'active');
+    log('sent', 'EMIT user:join:chat', { chatId: cid });
+    logSocket('up', 'user:join:chat', { chatId: cid });
+    log('system', 'Joined room chat:' + cid + ' — Ready to receive real-time messages!\nIMPORTANT: The OTHER tab must also join this same room!', null);
+  }
+
+  function leaveRoom() {
+    if (!socket) return;
+    const cid = parseInt(el('joinChatId').value);
+    socket.emit('user:leave:chat', { chatId: cid });
+    roomJoined = false;
+    el('d-roomJoined').textContent = 'No';
+    el('d-roomJoined').className = 'info-val err';
+    setCardState(3, '');
+    log('sent', 'EMIT user:leave:chat', { chatId: cid });
+    logSocket('up', 'user:leave:chat', { chatId: cid });
+  }
+
+  // ═══════════════════════════════════════════════
+  // STEP 4: SEND MESSAGE
+  // ═══════════════════════════════════════════════
+  async function sendHTTPMessage() {
+    const chatId   = parseInt(el('httpChatId').value);
+    const senderId = parseInt(el('httpSenderId').value);
+    const message  = el('httpMsg').value.trim();
+    if (!message) { log('error', 'Empty Message', 'Type a message first'); return; }
+    const idempotency_key = 'key-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    const payload = { chat_id: chatId, sender_id: senderId, message, message_type: 'text', idempotency_key };
+    log('sent', 'POST /message/send', payload);
+    try {
+      const r = await fetch(BASE() + '/message/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json();
+      showResp('resp-sendMsg', d, !r.ok);
+      log(r.ok ? 'sent' : 'error', 'POST /message/send Response', d);
+      el('d-lastHttp').textContent = r.status + ' ' + r.statusText;
+      if (r.ok) {
+        stats.sent++;
+        el('d-sent').textContent = stats.sent;
+        setCardState(4, 'done');
+        log('system', 'Message Sent! Waiting for real-time delivery... Check the Real-Time Msgs tab!', null);
+      }
+    } catch(e) {
+      showResp('resp-sendMsg', 'ERROR: ' + e.message, true);
+      log('error', 'Send Message Failed', e.message);
+    }
+  }
+
+  // Quick send bar
+  el('msgInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendBarMsg(); });
+  function sendBarMsg() {
+    const text = el('msgInput').value.trim();
+    if (!text) return;
+    if (!activeChatId) {
+      log('error', 'No Active Chat', 'Complete Step 1 (Create/Set Chat) and Step 3 (Join Room) first!');
+      return;
+    }
+    el('httpChatId').value   = activeChatId;
+    el('httpSenderId').value = el('myUserId').value;
+    el('httpMsg').value      = text;
+    sendHTTPMessage().then(() => { el('msgInput').value = ''; });
+  }
+
+  // ═══════════════════════════════════════════════
+  // TYPING
+  // ═══════════════════════════════════════════════
+  function sendTyping(isTyping) {
+    if (!socket || !socket.connected) { log('error', 'Not Connected', 'Connect socket first'); return; }
+    const cid = parseInt(el('joinChatId').value);
+    socket.emit('chat:typing', { chatId: cid, isTyping });
+    logSocket('up', 'chat:typing', { chatId: cid, isTyping });
+    log('sent', 'EMIT chat:typing', { chatId: cid, isTyping });
+  }
+
+  // ═══════════════════════════════════════════════
+  // MARK ALL READ
+  // ═══════════════════════════════════════════════
+  async function markAllRead() {
+    const chatId = parseInt(el('markReadChatId').value);
+    const userId = parseInt(el('markReadUserId').value);
+    try {
+      const r = await fetch(BASE() + '/message/mark-all-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId, userId })
+      });
+      const d = await r.json();
+      showResp('resp-markRead', d, !r.ok);
+      log(r.ok ? 'received' : 'error', 'POST /message/mark-all-read', d);
+    } catch(e) {
+      showResp('resp-markRead', 'ERROR: ' + e.message, true);
+      log('error', 'Mark Read Failed', e.message);
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  // RESET
+  // ═══════════════════════════════════════════════
+  function resetAll() {
+    if (socket) socket.disconnect();
+    socket = null; activeChatId = null; roomJoined = false;
+    stats = { sent: 0, received: 0 };
+    el('activeChatLabel').textContent = '-';
+    ['d-chatId','d-socketId','d-transport','d-connSince','d-myId','d-targetId'].forEach(id => { el(id).textContent = '—'; });
+    el('d-status').textContent = 'Disconnected'; el('d-status').className = 'info-val err';
+    el('d-sent').textContent = '0'; el('d-received').textContent = '0';
+    el('d-roomJoined').textContent = 'No'; el('d-roomJoined').className = 'info-val err';
+    el('connIndicator').className = 'conn-indicator';
+    el('connLabel').textContent = 'Disconnected';
+    el('socketStatus').style.display = 'none';
+    [1,2,3,4].forEach(n => setCardState(n, ''));
+    log('system', 'Reset Complete — Start fresh from Health Check', null);
+  }
+
+  // ═══════════════════════════════════════════════
+  // FULL DIAGNOSTICS
+  // ═══════════════════════════════════════════════
+  async function runFullDiag() {
+    const out = el('diagResults');
+    const panel = el('diagOutput');
+    panel.style.display = '';
+    out.textContent = 'Running diagnostics...\n';
+    switchTab('diag');
+
+    let r = [];
+    r.push('==== SmartGali Enterprise Chat Tester — Diagnostics ====');
+    r.push('Timestamp  : ' + new Date().toLocaleString('en-IN'));
+    r.push('Server URL : ' + getServerUrl());
+    r.push('');
+    r.push('[1] Socket.IO Library Check');
+    r.push(typeof io !== 'undefined' ? '  PASS  Socket.IO v4.8.1 loaded from CDN' : '  FAIL  Socket.IO NOT loaded — check internet');
+    r.push('');
+    r.push('[2] Server Health Check');
+    try {
+      const res = await fetch(BASE() + '/health');
+      const d = await res.json();
+      r.push('  PASS  Server reachable — HTTP ' + res.status);
+      r.push('  Body: ' + JSON.stringify(d));
+    } catch(e) {
+      r.push('  FAIL  Cannot reach server: ' + e.message);
+      r.push('  FIX : Run "npm run dev" in your project folder');
+    }
+    r.push('');
+    r.push('[3] Socket Connection');
+    if (socket && socket.connected) {
+      r.push('  PASS  Socket connected');
+      r.push('  Socket ID : ' + socket.id);
+      r.push('  Transport : ' + socket.io.engine.transport.name);
+      r.push('  Since     : ' + (connectedSince ? connectedSince.toLocaleTimeString('en-IN') : '—'));
+    } else {
+      r.push('  FAIL  Socket not connected');
+      r.push('  FIX : Click Connect in Step 2');
+      r.push('  FIX : Check browser F12 console for errors');
+      r.push('  FIX : Open file via VS Code Live Server, not file:// protocol');
+    }
+    r.push('');
+    r.push('[4] Chat Room Status');
+    r.push(roomJoined ? '  PASS  Joined room chat:' + activeChatId : '  WARN  Not joined any room — Complete Step 3');
+    r.push('');
+    r.push('[5] Session Stats');
+    r.push('  Messages Sent     : ' + stats.sent);
+    r.push('  Messages Received : ' + stats.received);
+    r.push('  Reconnect Count   : ' + reconnectCount);
+    r.push('');
+    r.push('[6] Common Issues & Fixes');
+    r.push('  Q: Socket not connecting?');
+    r.push('  A: Open HTML via VS Code Live Server extension.');
+    r.push('     Right-click chat-tester.html → "Open with Live Server"');
+    r.push('     file:// protocol causes WebSocket/CORS issues!');
+    r.push('');
+    r.push('  Q: Messages sent but NOT received in other tab?');
+    r.push('  A: Both tabs MUST join the SAME Chat Room in Step 3!');
+    r.push('     Tab A (User 1) and Tab B (User 2) need different User IDs.');
+    r.push('');
+    r.push('  Q: Foreign Key error on message send?');
+    r.push('  A: Create the chat first (Step 1) before sending messages.');
+    r.push('');
+    r.push('  Q: Server says "healthy" but socket still fails?');
+    r.push('  A: The server must use http.createServer + Socket.IO — check server.js');
+    r.push('========================================================');
+
+    out.textContent = r.join('\n');
+  }
+</script>
+</body>
+</html>
