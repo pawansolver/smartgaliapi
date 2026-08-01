@@ -29,10 +29,10 @@ const createTransporter = () => {
   return nodemailer.createTransport({
     host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
     port:   port,
-    secure: port === 465, // true for port 465, false for others
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 30000,
+    secure: port === 465, // true for port 465 (SSL), false for 587 (TLS/STARTTLS)
+    connectionTimeout: 30000,  // increased for Render cold-start latency
+    greetingTimeout:  20000,
+    socketTimeout:    45000,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
@@ -41,12 +41,35 @@ const createTransporter = () => {
 };
 
 /**
+ * Returns a verified transporter. Resets the cached instance on any failure
+ * so broken connections are never reused across requests.
+ */
+const getTransporter = async () => {
+  if (!transporter) {
+    transporter = createTransporter();
+  }
+  try {
+    await transporter.verify();
+  } catch (verifyError) {
+    // Destroy the broken transporter so the next call gets a fresh one
+    transporter = null;
+    console.error(`[EMAIL OTP] SMTP verify failed (${verifyError.code || verifyError.message})`);
+    const error = new Error('Email service is temporarily unavailable. Please try again in a moment.');
+    error.statusCode = 503;
+    error.cause = verifyError;
+    throw error;
+  }
+  return transporter;
+};
+
+/**
  * Sends a branded OTP email to the recipient.
  * @param {string} toEmail - The recipient's email address
  * @param {string} otp     - The 6-digit OTP code
  */
 export const sendOtpEmail = async (toEmail, otp) => {
-  transporter ??= createTransporter();
+  // getTransporter() verifies the SMTP connection and resets on failure
+  const t = await getTransporter();
 
   const mailOptions = {
     from:    `"SmartGalli" <${process.env.EMAIL_USER}>`,
@@ -121,7 +144,19 @@ export const sendOtpEmail = async (toEmail, otp) => {
     `,
   };
 
-  const info = await transporter.sendMail(mailOptions);
+  let info;
+  try {
+    info = await t.sendMail(mailOptions);
+  } catch (sendError) {
+    // Reset the cached transporter so the next request gets a fresh connection
+    transporter = null;
+    console.error(`[EMAIL OTP] sendMail failed (${sendError.code || sendError.message})`);
+    const error = new Error('Failed to send OTP email. Please try again in a moment.');
+    error.statusCode = 503;
+    error.cause = sendError;
+    throw error;
+  }
+
   const normalizedRecipient = toEmail.toLowerCase();
   const accepted = (info.accepted || []).some(
     (recipient) => String(recipient).toLowerCase() === normalizedRecipient
