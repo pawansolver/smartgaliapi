@@ -28,6 +28,36 @@ const detectIdentifierType = (identifier) => {
 const isUnavailableUser = (user) =>
   user.is_deleted || user.is_active === false || user.status !== 'active';
 
+const saveOtpAndDispatchEmail = async (user, email, otp, updates) => {
+  const previousValues = Object.fromEntries(
+    Object.keys(updates).map((key) => [key, user.get(key)])
+  );
+
+  await user.update(updates);
+
+  try {
+    await sendOtpEmail(email, otp);
+  } catch (emailError) {
+    try {
+      await user.update(previousValues);
+    } catch (rollbackError) {
+      console.error(
+        `[EMAIL OTP] Failed to restore OTP state (${rollbackError.name || 'Error'})`
+      );
+    }
+
+    console.error(
+      `[EMAIL OTP] Delivery failed (${emailError.code || emailError.name || 'Error'})`
+    );
+    const serviceError = new Error(
+      'OTP email could not be sent. Please try again in a moment.'
+    );
+    serviceError.statusCode = 503;
+    serviceError.cause = emailError;
+    throw serviceError;
+  }
+};
+
 /**
  * POST /api/v1/user-profile/send-otp
  *
@@ -116,7 +146,7 @@ export const sendOTP = async (req, res, next) => {
     const hashedOtp = await bcrypt.hash(rawOtp, saltRounds);
     const otpExpiry = new Date(Date.now() + 5 * 60 * 1000); // +5 minutes
 
-    await user.update({
+    await saveOtpAndDispatchEmail(user, cleanEmail, rawOtp, {
       phone: cleanPhone,
       currentOtp: hashedOtp,
       otpExpiresAt: otpExpiry,
@@ -124,9 +154,6 @@ export const sendOTP = async (req, res, next) => {
       otpResendCount: resendCount,       // persist the reset (or unchanged) count
       otpBlockedUntil: blockedUntil,     // persist the reset (or unchanged) block
     });
-
-    // ── Dispatch OTP via Email (Nodemailer) ───────────────────────
-    await sendOtpEmail(cleanEmail, rawOtp);
 
     return successResponse(res, 200, 'OTP dispatched to your registered email address.', {
       email: cleanEmail,
@@ -208,15 +235,13 @@ export const resendOTP = async (req, res, next) => {
     const hashedOtp = await bcrypt.hash(rawOtp, 10);
     const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
 
-    await user.update({
+    await saveOtpAndDispatchEmail(user, cleanEmail, rawOtp, {
       currentOtp: hashedOtp,
       otpExpiresAt: otpExpiry,
       otpSentAt: new Date(),
       otpResendCount: newResendCount,  // always save correct count to DB
       otpBlockedUntil: blockedUntil,
     });
-
-    await sendOtpEmail(cleanEmail, rawOtp);
 
     return successResponse(res, 200, 'A new OTP has been successfully dispatched to your email.', {
       email: cleanEmail,

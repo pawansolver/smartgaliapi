@@ -1,15 +1,38 @@
 import nodemailer from 'nodemailer';
 
+let transporter;
+
 /**
  * Creates a reusable Nodemailer transporter from environment variables.
  * Supports Gmail, Outlook, or any custom SMTP host.
  */
 const createTransporter = () => {
+  const requiredVariables = ['EMAIL_HOST', 'EMAIL_USER', 'EMAIL_PASS'];
+  const missingVariables = requiredVariables.filter(
+    (name) => !process.env[name]?.trim()
+  );
+  if (missingVariables.length > 0) {
+    const error = new Error(
+      `Email service is not configured. Missing: ${missingVariables.join(', ')}`
+    );
+    error.statusCode = 503;
+    throw error;
+  }
+
   const port = parseInt(process.env.EMAIL_PORT || '587');
+  if (!Number.isInteger(port) || port <= 0) {
+    const error = new Error('Email service has an invalid EMAIL_PORT.');
+    error.statusCode = 503;
+    throw error;
+  }
+
   return nodemailer.createTransport({
     host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
     port:   port,
     secure: port === 465, // true for port 465, false for others
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
@@ -23,12 +46,13 @@ const createTransporter = () => {
  * @param {string} otp     - The 6-digit OTP code
  */
 export const sendOtpEmail = async (toEmail, otp) => {
-  const transporter = createTransporter();
+  transporter ??= createTransporter();
 
   const mailOptions = {
     from:    `"SmartGalli" <${process.env.EMAIL_USER}>`,
     to:      toEmail,
     subject: '🔐 Your SmartGalli Verification Code',
+    text: `Your SmartGalli verification code is ${otp}. It expires in 5 minutes. If you did not request this code, ignore this email.`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -97,6 +121,18 @@ export const sendOtpEmail = async (toEmail, otp) => {
     `,
   };
 
-  await transporter.sendMail(mailOptions);
-  console.log(`[EMAIL OTP] OTP dispatched to ${toEmail}`);
+  const info = await transporter.sendMail(mailOptions);
+  const normalizedRecipient = toEmail.toLowerCase();
+  const accepted = (info.accepted || []).some(
+    (recipient) => String(recipient).toLowerCase() === normalizedRecipient
+  );
+
+  if (!accepted) {
+    const error = new Error('The email provider rejected the OTP recipient.');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  console.log(`[EMAIL OTP] Provider accepted message ${info.messageId}`);
+  return info;
 };

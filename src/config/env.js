@@ -40,6 +40,9 @@ if (isProduction) {
     ['PUBLIC_API_ORIGIN', process.env.PUBLIC_API_ORIGIN],
     ['PUBLIC_MEDIA_ORIGIN', process.env.PUBLIC_MEDIA_ORIGIN],
     ['UPLOADS_PATH', process.env.UPLOADS_PATH],
+    ['EMAIL_HOST', process.env.EMAIL_HOST],
+    ['EMAIL_USER', process.env.EMAIL_USER],
+    ['EMAIL_PASS', process.env.EMAIL_PASS],
   ].filter(([, value]) => !value?.trim()).map(([name]) => name);
 
   if (missing.length || jwtSecret === 'fallback_secret') {

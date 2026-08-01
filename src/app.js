@@ -21,9 +21,12 @@ app.use(cors({
     // Allow requests with no origin (mobile apps, Postman, curl)
     if (!origin) return callback(null, true);
     const normalizedOrigin = origin.replace(/\/+$/, '');
-    const isLocalDevelopment = !env.isProduction &&
+    // Flutter Web uses a random localhost port during development. Loopback
+    // origins remain local to the developer's machine and must work even when
+    // that browser build calls the deployed API.
+    const isLoopbackOrigin =
       /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalizedOrigin);
-    if (isLocalDevelopment || env.corsOrigins.includes(normalizedOrigin)) {
+    if (isLoopbackOrigin || env.corsOrigins.includes(normalizedOrigin)) {
       return callback(null, true);
     }
     const error = new Error('Origin is not allowed by CORS.');
