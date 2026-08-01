@@ -41,35 +41,16 @@ const createTransporter = () => {
 };
 
 /**
- * Returns a verified transporter. Resets the cached instance on any failure
- * so broken connections are never reused across requests.
- */
-const getTransporter = async () => {
-  if (!transporter) {
-    transporter = createTransporter();
-  }
-  try {
-    await transporter.verify();
-  } catch (verifyError) {
-    // Destroy the broken transporter so the next call gets a fresh one
-    transporter = null;
-    console.error(`[EMAIL OTP] SMTP verify failed (${verifyError.code || verifyError.message})`);
-    const error = new Error('Email service is temporarily unavailable. Please try again in a moment.');
-    error.statusCode = 503;
-    error.cause = verifyError;
-    throw error;
-  }
-  return transporter;
-};
-
-/**
  * Sends a branded OTP email to the recipient.
  * @param {string} toEmail - The recipient's email address
  * @param {string} otp     - The 6-digit OTP code
  */
 export const sendOtpEmail = async (toEmail, otp) => {
-  // getTransporter() verifies the SMTP connection and resets on failure
-  const t = await getTransporter();
+  // Lazy-init: create transporter only once, reset on failure
+  if (!transporter) {
+    transporter = createTransporter();
+  }
+  const t = transporter;
 
   const mailOptions = {
     from:    `"SmartGalli" <${process.env.EMAIL_USER}>`,
