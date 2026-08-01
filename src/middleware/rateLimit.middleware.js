@@ -19,13 +19,13 @@ const makeRateLimiter = ({ windowMs, max, message, skipSuccessfulRequests = fals
     skipSuccessfulRequests,
     keyGenerator: (req) => {
       // Use userId from body/query if available, else fall back to IP
-      const userId = req.body?.sender_id || req.body?.userId || req.query?.userId;
+      const userId = req.user?.id || req.body?.sender_id || req.body?.userId || req.query?.userId;
       if (userId) return `user:${userId}`;
       // Use the official ipKeyGenerator helper for proper IPv6 support
       return ipKeyGenerator(req);
     },
     handler: (req, res) => {
-      const key = req.body?.sender_id || req.body?.userId || req.query?.userId || req.ip;
+      const key = req.user?.id || req.body?.sender_id || req.body?.userId || req.query?.userId || req.ip;
       logger.securityBlock({ reason: 'rate_limit', key, path: req.path, max, windowMs });
       return errorResponse(res, 429, message || 'Too many requests. Please slow down.');
     },
@@ -69,4 +69,13 @@ export const reactionLimiter = makeRateLimiter({
   windowMs: 60 * 1000,
   max:      120,
   message:  'Too many reactions. Please slow down.',
+});
+
+/**
+ * Message mutations: edit, forward, pin and delete.
+ */
+export const messageActionLimiter = makeRateLimiter({
+  windowMs: 60 * 1000,
+  max:      120,
+  message:  'Too many message actions. Please slow down.',
 });

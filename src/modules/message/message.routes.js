@@ -1,6 +1,11 @@
 import express from 'express';
 import * as messageController from './message.controller.js';
-import { messageSendLimiter, readLimiter, reactionLimiter } from '../../middleware/rateLimit.middleware.js';
+import {
+  messageActionLimiter,
+  messageSendLimiter,
+  readLimiter,
+  reactionLimiter,
+} from '../../middleware/rateLimit.middleware.js';
 import { sanitizeBody, validateMessagePayload } from '../../middleware/sanitize.middleware.js';
 import { authenticate } from '../../middleware/auth.middleware.js';
 import {
@@ -227,6 +232,14 @@ router.get('/chat/:chatId/search', readLimiter, verifyChatMember, messageControl
  */
 router.get('/chat/:chatId/media', readLimiter, verifyChatMember, messageController.getChatMedia);
 
+router.get(
+  '/chat/:chatId/pinned',
+  readLimiter,
+  bindAuthenticatedIdentity('userId'),
+  verifyChatMember,
+  messageController.getPinnedMessages
+);
+
 /**
  * @swagger
  * /api/v1/message/{id}/read:
@@ -348,7 +361,23 @@ router.put('/:id/react', reactionLimiter, bindAuthenticatedIdentity('userId'), v
  *       403:
  *         description: You can only edit your own messages
  */
-router.put('/:id/edit', bindAuthenticatedIdentity('userId'), verifyMessageMember, sanitizeBody, messageController.editMessage);
+router.put(
+  '/:id/edit',
+  messageActionLimiter,
+  bindAuthenticatedIdentity('userId'),
+  verifyMessageMember,
+  sanitizeBody,
+  messageController.editMessage
+);
+
+router.put(
+  '/:id/pin',
+  messageActionLimiter,
+  bindAuthenticatedIdentity('userId'),
+  verifyMessageMember,
+  sanitizeBody,
+  messageController.setMessagePin
+);
 
 /**
  * @swagger
@@ -381,7 +410,26 @@ router.put('/:id/edit', bindAuthenticatedIdentity('userId'), verifyMessageMember
  *       200:
  *         description: Message deleted for you
  */
-router.delete('/:id/delete-for-me', bindAuthenticatedIdentity('userId'), verifyMessageMember, messageController.deleteForMe);
+router.delete(
+  '/:id/delete-for-me',
+  messageActionLimiter,
+  bindAuthenticatedIdentity('userId'),
+  verifyMessageMember,
+  messageController.deleteForMe
+);
+
+/**
+ * DELETE /api/v1/message/:id/delete-for-everyone
+ * Sender-only. Allowed within MSG_DELETE_WINDOW_MS (default 24 h).
+ * Tombstones message for ALL participants and emits message:deleted socket event.
+ */
+router.delete(
+  '/:id/delete-for-everyone',
+  messageActionLimiter,
+  bindAuthenticatedIdentity('userId'),
+  verifyMessageMember,
+  messageController.deleteForEveryone
+);
 
 /**
  * @swagger
@@ -415,6 +463,7 @@ router.delete('/:id/delete-for-me', bindAuthenticatedIdentity('userId'), verifyM
  *         description: Message forwarded successfully
  */
 router.post('/:id/forward',
+  messageActionLimiter,
   bindAuthenticatedIdentity('senderId', 'created_by'),
   verifyMessageMember,
   verifyTargetChatMember(),

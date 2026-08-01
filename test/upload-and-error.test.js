@@ -61,6 +61,19 @@ test('chat attachments require content signatures matching the declared MIME typ
   assert.equal(contentMatchesMime(Buffer.from('PK\u0003\u0004'), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'), true);
 });
 
+test('mobile camera and recorder attachment signatures are accepted', () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+  const heic = Buffer.concat([Buffer.alloc(4), Buffer.from('ftypheic')]);
+  const webm = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
+  const m4a = Buffer.concat([Buffer.alloc(4), Buffer.from('ftypM4A ')]);
+
+  assert.equal(contentMatchesMime(jpeg, 'image/jpg'), true);
+  assert.equal(contentMatchesMime(heic, 'image/heic'), true);
+  assert.equal(contentMatchesMime(webm, 'video/webm'), true);
+  assert.equal(contentMatchesMime(webm, 'audio/webm'), true);
+  assert.equal(contentMatchesMime(m4a, 'audio/x-m4a'), true);
+});
+
 test('media URLs are absolute and normalized throughout response payloads', () => {
   assert.match(normalizeMediaUrl('/uploads/file.jpg'), /^https?:\/\/.+\/uploads\/file\.jpg$/);
   const payload = normalizeMediaPayload({

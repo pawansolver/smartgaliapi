@@ -1,8 +1,10 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../src/config/db.js';
-import { up, down, version } from './migrations/002-chat-media-module.js';
+import * as chatMediaMigration from './migrations/002-chat-media-module.js';
+import * as messagePinsMigration from './migrations/003-message-pins.js';
 
 const MIGRATIONS_TABLE = 'schema_migrations';
+const migrations = [chatMediaMigration, messagePinsMigration];
 
 const ensureMigrationsTable = async (queryInterface) => {
   const tables = (await queryInterface.showAllTables()).map((table) =>
@@ -29,28 +31,37 @@ const run = async () => {
   await sequelize.authenticate();
   const queryInterface = sequelize.getQueryInterface();
   await ensureMigrationsTable(queryInterface);
-  const [rows] = await sequelize.query(
-    'SELECT version FROM schema_migrations WHERE version = ?',
-    { replacements: [version] },
-  );
-  const applied = rows.length > 0;
 
   if (direction === 'up') {
-    if (!applied) {
-      await up();
-      await queryInterface.bulkInsert(MIGRATIONS_TABLE, [
-        { version, applied_at: new Date() },
-      ]);
-      console.log(`Applied migration ${version}.`);
-    } else {
-      console.log(`Migration ${version} is already applied.`);
+    for (const migration of migrations) {
+      const [rows] = await sequelize.query(
+        'SELECT version FROM schema_migrations WHERE version = ?',
+        { replacements: [migration.version] },
+      );
+      if (rows.length === 0) {
+        await migration.up();
+        await queryInterface.bulkInsert(MIGRATIONS_TABLE, [
+          { version: migration.version, applied_at: new Date() },
+        ]);
+        console.log(`Applied migration ${migration.version}.`);
+      } else {
+        console.log(`Migration ${migration.version} is already applied.`);
+      }
     }
-  } else if (applied) {
-    await down();
-    await queryInterface.bulkDelete(MIGRATIONS_TABLE, { version });
-    console.log(`Reverted migration ${version}.`);
   } else {
-    console.log(`Migration ${version} is not applied.`);
+    for (const migration of [...migrations].reverse()) {
+      const [rows] = await sequelize.query(
+        'SELECT version FROM schema_migrations WHERE version = ?',
+        { replacements: [migration.version] },
+      );
+      if (rows.length > 0) {
+        await migration.down();
+        await queryInterface.bulkDelete(MIGRATIONS_TABLE, { version: migration.version });
+        console.log(`Reverted migration ${migration.version}.`);
+      } else {
+        console.log(`Migration ${migration.version} is not applied.`);
+      }
+    }
   }
 };
 

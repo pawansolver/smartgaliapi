@@ -5,18 +5,25 @@ import multer from 'multer';
 import env from '../config/env.js';
 
 const TYPES = Object.freeze({
-  'image/jpeg': { ext: '.jpg', kind: 'image', max: 10 },
-  'image/png': { ext: '.png', kind: 'image', max: 10 },
-  'image/gif': { ext: '.gif', kind: 'image', max: 10 },
-  'image/webp': { ext: '.webp', kind: 'image', max: 10 },
-  'video/mp4': { ext: '.mp4', kind: 'video', max: 100 },
-  'video/quicktime': { ext: '.mov', kind: 'video', max: 100 },
-  'video/x-msvideo': { ext: '.avi', kind: 'video', max: 100 },
-  'audio/mpeg': { ext: '.mp3', kind: 'audio', max: 25 },
-  'audio/aac': { ext: '.aac', kind: 'audio', max: 25 },
-  'audio/mp4': { ext: '.m4a', kind: 'audio', max: 25 },
-  'audio/wav': { ext: '.wav', kind: 'audio', max: 25 },
-  'audio/ogg': { ext: '.ogg', kind: 'audio', max: 25 },
+  'image/jpeg':  { ext: '.jpg',  kind: 'image', max: 10 },
+  'image/jpg':   { ext: '.jpg',  kind: 'image', max: 10 },
+  'image/png':   { ext: '.png',  kind: 'image', max: 10 },
+  'image/gif':   { ext: '.gif',  kind: 'image', max: 10 },
+  'image/webp':  { ext: '.webp', kind: 'image', max: 10 },
+  'image/heic':  { ext: '.heic', kind: 'image', max: 10 }, // iPhone camera
+  'image/heif':  { ext: '.heif', kind: 'image', max: 10 }, // iPhone camera alt
+  'video/mp4':        { ext: '.mp4', kind: 'video', max: 100 },
+  'video/quicktime':  { ext: '.mov', kind: 'video', max: 100 },
+  'video/x-msvideo':  { ext: '.avi', kind: 'video', max: 100 },
+  'video/webm':       { ext: '.webm', kind: 'video', max: 100 }, // Android/web video
+  'audio/mpeg':   { ext: '.mp3',  kind: 'audio', max: 25 },
+  'audio/aac':    { ext: '.aac',  kind: 'audio', max: 25 },
+  'audio/mp4':    { ext: '.m4a',  kind: 'audio', max: 25 }, // Android voice notes
+  'audio/m4a':    { ext: '.m4a',  kind: 'audio', max: 25 }, // iOS voice notes
+  'audio/x-m4a':  { ext: '.m4a',  kind: 'audio', max: 25 }, // iOS voice notes alt
+  'audio/webm':   { ext: '.webm', kind: 'audio', max: 25 }, // Web/Android Chrome
+  'audio/wav':    { ext: '.wav',  kind: 'audio', max: 25 },
+  'audio/ogg':    { ext: '.ogg',  kind: 'audio', max: 25 },
   'application/pdf': { ext: '.pdf', kind: 'document', max: 25 },
   'application/msword': { ext: '.doc', kind: 'document', max: 25 },
   'application/vnd.ms-excel': { ext: '.xls', kind: 'document', max: 25 },
@@ -31,10 +38,17 @@ const ascii = (buffer, start, value) => buffer.subarray(start, start + value.len
 
 export const contentMatchesMime = (buffer, mime) => {
   if (!buffer?.length || !TYPES[mime]) return false;
-  if (mime === 'image/jpeg') return startsWith(buffer, [0xff, 0xd8, 0xff]);
+  if (mime === 'image/jpeg' || mime === 'image/jpg') {
+    return startsWith(buffer, [0xff, 0xd8, 0xff]);
+  }
   if (mime === 'image/png') return startsWith(buffer, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   if (mime === 'image/gif') return ascii(buffer, 0, 'GIF87a') || ascii(buffer, 0, 'GIF89a');
   if (mime === 'image/webp') return ascii(buffer, 0, 'RIFF') && ascii(buffer, 8, 'WEBP');
+  if (mime === 'image/heic' || mime === 'image/heif') {
+    const brand = buffer.subarray(8, 12).toString('ascii');
+    return ascii(buffer, 4, 'ftyp')
+      && ['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1'].includes(brand);
+  }
   if (mime === 'application/pdf') return ascii(buffer, 0, '%PDF-');
   if (mime === 'video/x-msvideo') return ascii(buffer, 0, 'RIFF') && ascii(buffer, 8, 'AVI ');
   if (mime === 'audio/wav') return ascii(buffer, 0, 'RIFF') && ascii(buffer, 8, 'WAVE');
@@ -43,7 +57,16 @@ export const contentMatchesMime = (buffer, mime) => {
     return ascii(buffer, 0, 'ID3') || (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0);
   }
   if (mime === 'audio/aac') return buffer[0] === 0xff && (buffer[1] & 0xf6) === 0xf0;
-  if (mime === 'video/mp4' || mime === 'video/quicktime' || mime === 'audio/mp4') return ascii(buffer, 4, 'ftyp');
+  if (mime === 'video/webm' || mime === 'audio/webm') {
+    return startsWith(buffer, [0x1a, 0x45, 0xdf, 0xa3]);
+  }
+  if ([
+    'video/mp4',
+    'video/quicktime',
+    'audio/mp4',
+    'audio/m4a',
+    'audio/x-m4a',
+  ].includes(mime)) return ascii(buffer, 4, 'ftyp');
   if (mime.includes('openxmlformats')) return startsWith(buffer, [0x50, 0x4b, 0x03, 0x04]);
   if (['application/msword', 'application/vnd.ms-excel', 'application/vnd.ms-powerpoint'].includes(mime)) {
     return startsWith(buffer, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);

@@ -14,6 +14,7 @@ import Community from '../community/community.model.js';
 import Event from '../event/event.model.js';
 import BusinessProfile from '../business_profile/business_profile.model.js';
 import path from 'path';
+import env from '../../config/env.js';
 
 const normalizeRecipientPhone = (value) => {
   const trimmed = String(value ?? '').trim();
@@ -275,7 +276,8 @@ export const saveUploadedAttachment = (file) => {
           : 'document'
   );
 
-  const media_url = `/uploads/${file.filename}`;
+  // Build absolute URL so Flutter / any client can load the file directly
+  const media_url = `${env.publicMediaOrigin}/uploads/${file.filename}`;
 
   const media_metadata = {
     file_name:     file.originalname,

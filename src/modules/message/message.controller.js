@@ -107,6 +107,7 @@ export const editMessage = async (req, res, next) => {
     });
     return successResponse(res, 200, 'Message edited successfully', updated);
   } catch (error) {
+    if (error.statusCode) return errorResponse(res, error.statusCode, error.message);
     if (error.message.includes('only edit your own')) return errorResponse(res, 403, error.message);
     next(error);
   }
@@ -123,6 +124,61 @@ export const deleteForMe = async (req, res, next) => {
       ip: req.ip, ua: req.get('user-agent'),
     });
     return successResponse(res, 200, 'Message deleted for you', result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/v1/message/:id/delete-for-everyone
+ * WhatsApp approach: sender-only, within 24h window, tombstones for all
+ */
+export const deleteForEveryone = async (req, res, next) => {
+  try {
+    const result = await messageService.deleteForEveryone({
+      messageId: req.params.id,
+      userId: req.user.id,
+      ip: req.ip,
+      ua: req.get('user-agent'),
+    });
+    return successResponse(res, 200, 'Message deleted for everyone', result);
+  } catch (error) {
+    if (error.statusCode === 403) return errorResponse(res, 403, error.message);
+    if (error.statusCode === 404) return errorResponse(res, 404, error.message);
+    next(error);
+  }
+};
+
+export const setMessagePin = async (req, res, next) => {
+  try {
+    const { is_pinned } = req.body;
+    if (typeof is_pinned !== 'boolean') {
+      return errorResponse(res, 400, 'is_pinned must be a boolean');
+    }
+    const result = await messageService.setMessagePin({
+      messageId: req.params.id,
+      userId: req.user.id,
+      isPinned: is_pinned,
+    });
+    return successResponse(
+      res,
+      200,
+      is_pinned ? 'Message pinned successfully' : 'Message unpinned successfully',
+      result
+    );
+  } catch (error) {
+    if (error.statusCode) return errorResponse(res, error.statusCode, error.message);
+    next(error);
+  }
+};
+
+export const getPinnedMessages = async (req, res, next) => {
+  try {
+    const messages = await messageService.getPinnedMessages({
+      chatId: req.params.chatId,
+      requestingUserId: req.user.id,
+    });
+    return successResponse(res, 200, 'Pinned messages fetched successfully', messages);
   } catch (error) {
     next(error);
   }
