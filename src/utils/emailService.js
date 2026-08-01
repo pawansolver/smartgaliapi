@@ -26,16 +26,24 @@ const createTransporter = () => {
     throw error;
   }
 
+  const isSSL = port === 465; // port 465 = SSL/SMTPS, port 587 = STARTTLS
+
   return nodemailer.createTransport({
-    host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port:   port,
-    secure: port === 465, // true for port 465 (SSL), false for 587 (TLS/STARTTLS)
+    host:       process.env.EMAIL_HOST || 'smtp.gmail.com',
+    port:       port,
+    secure:     isSSL,         // true only for port 465
+    requireTLS: !isSSL,        // force STARTTLS upgrade on port 587 — never send plain-text
     connectionTimeout: 30000,  // increased for Render cold-start latency
     greetingTimeout:  20000,
     socketTimeout:    45000,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
+    },
+    tls: {
+      // Allow self-signed certs on some Hostinger SMTP nodes;
+      // remove this line if your cert chain is fully valid
+      rejectUnauthorized: false,
     },
   });
 };
@@ -131,7 +139,13 @@ export const sendOtpEmail = async (toEmail, otp) => {
   } catch (sendError) {
     // Reset the cached transporter so the next request gets a fresh connection
     transporter = null;
-    console.error(`[EMAIL OTP] sendMail failed (${sendError.code || sendError.message})`);
+    // Log full SMTP error details so Render logs show the real cause
+    console.error(
+      `[EMAIL OTP] sendMail FAILED — code: ${sendError.code || 'N/A'}, ` +
+      `errno: ${sendError.errno || 'N/A'}, ` +
+      `host: ${process.env.EMAIL_HOST}:${process.env.EMAIL_PORT}, ` +
+      `message: ${sendError.message}`
+    );
     const error = new Error('Failed to send OTP email. Please try again in a moment.');
     error.statusCode = 503;
     error.cause = sendError;
