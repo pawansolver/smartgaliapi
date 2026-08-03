@@ -46,6 +46,7 @@ import adSponsoredRoutes from '../modules/ad_sponsored/ad_sponsored.routes.js';
 import analyticsRoutes from '../modules/analytics/analytics.routes.js';
 import feedRoutes from '../modules/feed/feed.routes.js';
 import profileRoutes from '../modules/profile/profile.routes.js';
+import authRoutes from '../modules/auth/auth.routes.js';
 const router = express.Router();
 
 // Mount example module routes
@@ -54,6 +55,7 @@ router.use('/role', roleRoutes);
 router.use('/user', userRoutes);
 router.use('/user-profile', userProfileRoutes);
 router.use('/profile', profileRoutes);
+router.use('/auth', authRoutes);
 router.use('/feed', feedRoutes);
 router.use('/community-category', communityCategoryRoutes);
 router.use('/community', communityRoutes);

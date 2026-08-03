@@ -10,7 +10,13 @@ import { logger } from '../utils/logger.js';
  * for accurate counting across multiple Node.js instances.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-const makeRateLimiter = ({ windowMs, max, message, skipSuccessfulRequests = false }) =>
+const makeRateLimiter = ({
+  windowMs,
+  max,
+  message,
+  skipSuccessfulRequests = false,
+  identityFields = [],
+}) =>
   rateLimit({
     windowMs,
     max,
@@ -18,11 +24,17 @@ const makeRateLimiter = ({ windowMs, max, message, skipSuccessfulRequests = fals
     legacyHeaders:   false,
     skipSuccessfulRequests,
     keyGenerator: (req) => {
+      const suppliedIdentity = identityFields
+        .map((field) => req.body?.[field])
+        .find((value) => typeof value === 'string' && value.trim());
+      if (suppliedIdentity) {
+        return `${ipKeyGenerator(req.ip)}:${suppliedIdentity.trim().toLowerCase()}`;
+      }
       // Use userId from body/query if available, else fall back to IP
       const userId = req.user?.id || req.body?.sender_id || req.body?.userId || req.query?.userId;
       if (userId) return `user:${userId}`;
       // Use the official ipKeyGenerator helper for proper IPv6 support
-      return ipKeyGenerator(req);
+      return ipKeyGenerator(req.ip);
     },
     handler: (req, res) => {
       const key = req.user?.id || req.body?.sender_id || req.body?.userId || req.query?.userId || req.ip;
@@ -78,4 +90,44 @@ export const messageActionLimiter = makeRateLimiter({
   windowMs: 60 * 1000,
   max:      120,
   message:  'Too many message actions. Please slow down.',
+});
+
+export const authSignupLimiter = makeRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  identityFields: ['email', 'mobile'],
+  message: 'Too many signup attempts. Please try again later.',
+});
+
+export const authOtpSendLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  identityFields: ['identifier', 'email', 'mobile'],
+  message: 'Too many verification code requests. Please try again later.',
+});
+
+export const authOtpVerifyLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  identityFields: ['identifier', 'email'],
+  message: 'Too many verification attempts. Please try again later.',
+});
+
+export const authSigninLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  identityFields: ['identifier'],
+  message: 'Too many sign-in attempts. Please try again later.',
+});
+
+export const authResetLimiter = makeRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Too many password reset attempts. Please try again later.',
+});
+
+export const authRefreshLimiter = makeRateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: 'Too many token refresh attempts. Please try again later.',
 });

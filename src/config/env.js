@@ -23,6 +23,10 @@ const parseTrustProxy = (value) => {
 
 const localOrigin = `http://localhost:${port}`;
 const jwtSecret = process.env.JWT_SECRET || 'fallback_secret';
+const refreshSecret = process.env.JWT_REFRESH_SECRET || (isProduction ? '' : 'development_refresh_secret');
+const accessTtl = process.env.AUTH_ACCESS_TTL || process.env.JWT_EXPIRES_IN || '15m';
+const refreshTtl = process.env.AUTH_REFRESH_TTL || '30d';
+const sessionTtl = process.env.AUTH_SESSION_TTL || '10m';
 const corsOrigins = parseList(process.env.CORS_ORIGINS, [
   'http://localhost',
   'http://127.0.0.1',
@@ -33,6 +37,7 @@ const corsOrigins = parseList(process.env.CORS_ORIGINS, [
 if (isProduction) {
   const missing = [
     ['JWT_SECRET', process.env.JWT_SECRET],
+    ['JWT_REFRESH_SECRET', process.env.JWT_REFRESH_SECRET],
     ['DB_HOST', process.env.DB_HOST],
     ['DB_USER', process.env.DB_USER],
     ['DB_NAME', process.env.DB_NAME],
@@ -47,6 +52,17 @@ if (isProduction) {
 
   if (missing.length || jwtSecret === 'fallback_secret') {
     throw new Error(`Invalid production configuration. Missing: ${missing.join(', ') || 'secure JWT_SECRET'}`);
+  }
+  if (refreshSecret.length < 32 || refreshSecret === jwtSecret) {
+    throw new Error('Invalid production configuration. JWT_REFRESH_SECRET must be at least 32 characters and differ from JWT_SECRET.');
+  }
+  const invalidTtl = [
+    ['AUTH_ACCESS_TTL', accessTtl],
+    ['AUTH_REFRESH_TTL', refreshTtl],
+    ['AUTH_SESSION_TTL', sessionTtl],
+  ].find(([, value]) => !/^\d+(s|m|h|d)$/.test(value));
+  if (invalidTtl) {
+    throw new Error(`Invalid production configuration. ${invalidTtl[0]} must use <number>s|m|h|d.`);
   }
 }
 
@@ -64,6 +80,12 @@ const env = {
   jwt: {
     secret: jwtSecret,
     expiresIn: process.env.JWT_EXPIRES_IN || '1d',
+  },
+  auth: {
+    accessTtl,
+    refreshTtl,
+    sessionTtl,
+    refreshSecret,
   },
   corsOrigins,
   publicApiOrigin: (process.env.PUBLIC_API_ORIGIN || localOrigin).replace(/\/+$/, ''),

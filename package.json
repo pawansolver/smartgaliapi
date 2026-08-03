@@ -12,6 +12,8 @@
     "migrate:profile:down": "node scripts/migrateProfile.js down",
     "migrate:chat:up": "node scripts/migrateChat.js up",
     "migrate:chat:down": "node scripts/migrateChat.js down",
+    "migrate:auth:up": "node scripts/migrateAuth.js up",
+    "migrate:auth:down": "node scripts/migrateAuth.js down",
     "test": "node --test"
   },
   "keywords": [
