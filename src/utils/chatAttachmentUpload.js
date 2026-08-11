@@ -90,7 +90,11 @@ export const chatAttachmentUpload = multer({
   limits: { files: 1, fileSize: 100 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (!TYPES[file.mimetype]) {
-      return cb(Object.assign(new Error('Unsupported attachment type'), { code: 'INVALID_ATTACHMENT_TYPE' }), false);
+      // Calling cb(error) — NOT cb(error, false) — ensures multer forwards
+      // the error to next() rather than silently dropping the file, which
+      // would leave req.file undefined and trigger the wrong "No file uploaded"
+      // error message in the controller.
+      return cb(Object.assign(new Error('Unsupported attachment type'), { code: 'INVALID_ATTACHMENT_TYPE' }));
     }
     return cb(null, true);
   },

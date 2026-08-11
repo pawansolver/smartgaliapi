@@ -37,8 +37,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 })); // Enable CORS
-app.use(express.json()); // Parse JSON payloads
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded payloads
+// Skip JSON / urlencoded parsers for multipart requests (file uploads).
+// If these parsers run on a multipart body they interfere with multer's
+// stream reader, leaving req.file undefined even when the file was sent.
+const isMultipart = (req) => (req.headers['content-type'] || '').startsWith('multipart/');
+app.use((req, res, next) => isMultipart(req) ? next() : express.json()(req, res, next));
+app.use((req, res, next) => isMultipart(req) ? next() : express.urlencoded({ extended: true })(req, res, next));
 app.use(morgan(env.isProduction ? 'combined' : 'dev')); // HTTP request logger
 
 // Setup Swagger UI Documentation

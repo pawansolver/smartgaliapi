@@ -1,6 +1,8 @@
 import fs from 'fs';
+import path from 'path';
 import { successResponse, errorResponse } from '../../utils/response.js';
 import * as chatService from './chat.service.js';
+import env from '../../config/env.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ENTERPRISE APIs
@@ -108,7 +110,41 @@ export const pinChat = async (req, res, next) => {
  */
 export const uploadAttachment = async (req, res, next) => {
   try {
-    if (!req.file) return errorResponse(res, 400, 'No file uploaded. Use field name "attachment"');
+    console.log('\n🚀 ============ UPLOAD ATTACHMENT HIT ============ 🚀');
+    console.log('📁 env.uploadsPath (express.static serves FROM here):', env.uploadsPath);
+    console.log('📂 process.cwd():', process.cwd());
+
+    if (!req.file) {
+      console.log('❌ No req.file found! Multer did not parse the body.');
+      return errorResponse(res, 400, 'No file uploaded. Use field name "attachment"');
+    }
+
+    // ── CRITICAL PATH CHECK ───────────────────────────────────────────────────
+    console.log('✅ req.file.path   (multer saved file HERE):', req.file.path);
+    console.log('✅ req.file.filename:', req.file.filename);
+    console.log('✅ req.file.mimetype:', req.file.mimetype);
+    console.log('✅ req.file.size:', req.file.size, 'bytes');
+
+    // Verify the file physically exists where multer claims it saved it
+    const fileExistsOnDisk = fs.existsSync(req.file.path);
+    console.log('📌 File EXISTS on disk at req.file.path?', fileExistsOnDisk);
+
+    // Check if multer saved it in the EXPECTED location (env.uploadsPath)
+    const expectedPath = path.join(env.uploadsPath, req.file.filename);
+    const existsAtExpectedPath = fs.existsSync(expectedPath);
+    console.log('📌 File EXISTS at EXPECTED path (env.uploadsPath)?', existsAtExpectedPath);
+    console.log('   Expected path:', expectedPath);
+
+    if (!fileExistsOnDisk) {
+      console.error('❌ CRITICAL: File does NOT exist at req.file.path — upload failed silently!');
+    }
+    if (!existsAtExpectedPath) {
+      console.error('❌ PATH MISMATCH: File saved to a different folder than express.static serves!');
+      console.error('   Multer saved to :', req.file.path);
+      console.error('   express.static looks in:', env.uploadsPath);
+    }
+    // ── END PATH CHECK ────────────────────────────────────────────────────────
+
     const result = chatService.saveUploadedAttachment(req.file);
     
     // Dispatch background worker for metadata extraction / thumbnails
@@ -121,10 +157,26 @@ export const uploadAttachment = async (req, res, next) => {
       messageType: result.message_type,
     });
 
+    console.log('✅ [BACKEND] Upload SUCCESS. Returning URL:', result.media_url);
+    console.log('================================================\n');
     return successResponse(res, 200, 'File uploaded successfully', result);
   } catch (error) {
+    console.error('\n==================== ❌ UPLOAD ERROR ❌ ====================');
+    console.error('Error Message:', error.message);
+    console.error('Stack Trace:', error.stack);
+    console.error('Request Body:', req.body);
+    console.error('File Info:', req.file);
+    console.error('============================================================\n');
+    
     if (req.file?.path) await fs.promises.unlink(req.file.path).catch(() => {});
-    next(error);
+    
+    // Send exact error to the frontend/postman so it's visible in the response
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Upload failed', 
+      error: error.message,
+      stack: error.stack // (Remove in production)
+    });
   }
 };
 
