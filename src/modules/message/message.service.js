@@ -15,7 +15,19 @@ import { emitNotification, resolveDisplayName } from '../notification/notificati
 import { checkIdempotencyKey, storeIdempotencyKey } from '../../config/redis.js';
 import { auditMessageEdit, auditMessageDelete, auditMessageForward } from '../modules/../audit_log/audit_log.service.js';
 import { logger } from '../../utils/logger.js';
-import { broadcastMessage, getIO } from '../../socket.js';
+import { getIO } from '../../socket.js';
+import * as outboxService from '../outbox/outbox.service.js';
+import { publishOutboxEvent } from '../outbox/outbox.publisher.js';
+import {
+  OUTBOX_EVENT_TYPES,
+  OUTBOX_AGGREGATE_TYPES,
+  OUTBOX_STATUS,
+} from '../outbox/outbox.events.js';
+
+/** Mutable deps for unit tests (ESM exports are not mockable via mock.method). */
+export const sendMessageDeps = {
+  publishOutboxEvent: (event) => publishOutboxEvent(event),
+};
 
 // ── Shared includes for message reads ─────────────────────────────────────────
 const MESSAGE_INCLUDES = [
@@ -124,8 +136,9 @@ export const sendMessage = async (messageData) => {
   }
 
   let newMessage;
+  let outboxEvent;
 
-  // ── C. ACID Transaction: Insert + Update Chat + Increment Unread + Receipts ─
+  // ── C. ACID Transaction: Message + Chat + Unread + Receipts + Outbox ─────
   await sequelize.transaction(async (t) => {
     if (reply_to) {
       const repliedMessage = await Message.findOne({
@@ -170,6 +183,19 @@ export const sendMessage = async (messageData) => {
       senderId:  sender_id,
       transaction: t,
     });
+
+    // Step 5: Transactional outbox — same TX as domain writes (atomic guarantee)
+    outboxEvent = await outboxService.createEvent({
+      event_type: OUTBOX_EVENT_TYPES.MESSAGE_CREATED,
+      aggregate_type: OUTBOX_AGGREGATE_TYPES.MESSAGE,
+      aggregate_id: newMessage.id,
+      payload: {
+        messageId: newMessage.id,
+        chatId: chat_id,
+        senderId: sender_id,
+      },
+      status: OUTBOX_STATUS.PENDING,
+    }, { transaction: t });
   });
 
   // Hydrate sender/reply associations so REST and socket clients receive the
@@ -185,15 +211,19 @@ export const sendMessage = async (messageData) => {
 
   logger.messageSent({ messageId: newMessage.id, chatId: chat_id, senderId: sender_id, messageType: message_type });
 
-  // ── E. Real-time Socket.IO Broadcast (non-critical, outside transaction) ──
-  // Sends 'chat:message' to all clients who have joined the chat room via
-  // socket.emit('user:join:chat', { chatId }). This is the core real-time delivery.
-  try {
-    const io = getIO();
-    broadcastMessage(io, chat_id, hydratedMessage);
-  } catch (socketErr) {
-    // Socket may not be initialized in test environments — safe to ignore
-    logger.warn('MESSAGE', 'socket_broadcast_skipped', { chatId: chat_id, error: socketErr.message });
+  // ── E. Outbox → BullMQ (non-critical, outside TX) ─────────────────────────
+  // HTTP must not wait for Socket.IO. Enqueue only; worker runs processEvent.
+  // If enqueue fails, event stays pending for worker recovery sweep.
+  if (outboxEvent) {
+    try {
+      await sendMessageDeps.publishOutboxEvent(outboxEvent);
+    } catch (outboxErr) {
+      logger.warn('MESSAGE', 'outbox_publish_skipped', {
+        chatId: chat_id,
+        eventId: outboxEvent.id,
+        error: outboxErr.message,
+      });
+    }
   }
 
   // ── F. Push notifications (outside transaction, non-critical) ─────────────

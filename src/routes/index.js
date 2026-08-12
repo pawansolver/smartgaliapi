@@ -47,7 +47,13 @@ import analyticsRoutes from '../modules/analytics/analytics.routes.js';
 import feedRoutes from '../modules/feed/feed.routes.js';
 import profileRoutes from '../modules/profile/profile.routes.js';
 import authRoutes from '../modules/auth/auth.routes.js';
+import deviceRoutes from '../modules/user_devices/user_device.routes.js';
+import { generalApiLimiter } from '../middleware/rateLimit.middleware.js';
+
 const router = express.Router();
+
+// Shared Redis-backed general API limiter (skips /health)
+router.use(generalApiLimiter);
 
 // Mount example module routes
 router.use('/example', exampleRoutes);
@@ -56,6 +62,7 @@ router.use('/user', userRoutes);
 router.use('/user-profile', userProfileRoutes);
 router.use('/profile', profileRoutes);
 router.use('/auth', authRoutes);
+router.use('/device', deviceRoutes);
 router.use('/feed', feedRoutes);
 router.use('/community-category', communityCategoryRoutes);
 router.use('/community', communityRoutes);

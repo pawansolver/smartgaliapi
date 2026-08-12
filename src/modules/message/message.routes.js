@@ -5,6 +5,7 @@ import {
   messageSendLimiter,
   readLimiter,
   reactionLimiter,
+  searchLimiter,
 } from '../../middleware/rateLimit.middleware.js';
 import { sanitizeBody, validateMessagePayload } from '../../middleware/sanitize.middleware.js';
 import { authenticate } from '../../middleware/auth.middleware.js';
@@ -202,7 +203,7 @@ router.get('/chat/:chatId', readLimiter, bindAuthenticatedIdentity('userId'), ve
  *       200:
  *         description: "{ hits, total, engine }"
  */
-router.get('/chat/:chatId/search', readLimiter, verifyChatMember, messageController.searchMessages);
+router.get('/chat/:chatId/search', searchLimiter, verifyChatMember, messageController.searchMessages);
 
 /**
  * @swagger

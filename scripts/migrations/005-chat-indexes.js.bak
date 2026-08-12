@@ -1,0 +1,100 @@
+﻿/**
+ * Migration 005 — Chat System Scalability Indexes
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Adds missing composite and single-column indexes for all chat-related tables
+ * based on actual query patterns found in chat.service.js and message.service.js
+ *
+ * ALL operations are safe for production: no DROP TABLE, no DROP COLUMN.
+ * Every index creation is idempotent (checks existence before adding).
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * EXISTING INDEXES (already created by migration 002 + model syncs):
+ *   messages:
+ *     - uq_message_idempotency_key  UNIQUE (idempotency_key)
+ *     - ix_messages_chat_id_id      (chat_id, id)
+ *     - ix_messages_sender_id       (sender_id)
+ *   message_receipts (model sync):
+ *     - (message_id)
+ *     - (user_id, delivered_at)
+ *     - uq_receipt_message_user     UNIQUE (message_id, user_id)
+ *   message_reactions (model sync):
+ *     - (message_id), (user_id)
+ *     - uq_reaction_message_user_emoji UNIQUE (message_id, user_id, emoji)
+ *   message_deletions (model sync):
+ *     - uq_deletion_message_user    UNIQUE (message_id, user_id)
+ *     - (user_id)
+ *   message_pins (model sync):
+ *     - (chat_id, created_at)
+ *     - uq_message_pin_chat_message UNIQUE (chat_id, message_id)
+ */
+
+import sequelize from '../../src/config/db.js';
+
+export const version = '005-chat-indexes';
+
+const ensureIndex = async (queryInterface, table, fields, name, options = {}) => {
+  const indexes = await queryInterface.showIndex(table);
+  const alreadyExists = indexes.some((idx) => idx.name === name);
+  if (!alreadyExists) {
+    await queryInterface.addIndex(table, fields, { ...options, name });
+    console.log(  Added: );
+  } else {
+    console.log(  Skipped (exists): );
+  }
+};
+
+const removeIndexIfPresent = async (queryInterface, table, name) => {
+  const indexes = await queryInterface.showIndex(table);
+  if (indexes.some((idx) => idx.name === name)) {
+    await queryInterface.removeIndex(table, name);
+    console.log(  Removed: );
+  }
+};
+
+export const up = async ({ queryInterface = sequelize.getQueryInterface() } = {}) => {
+  console.log('[005-chat-indexes] UP...');
+
+  // chat_participants: UNIQUE (chat_id, user_id) - prevents duplicate rows
+  // Needed by: verifyChatMember, sendMessage increment, muteChat, pinChat
+  await ensureIndex(queryInterface, 'chat_participants', ['chat_id', 'user_id'], 'uq_chat_participant_chat_user', { unique: true });
+
+  // chat_participants: (user_id, is_deleted) - getMyChats WHERE user_id = ? AND is_deleted = false
+  await ensureIndex(queryInterface, 'chat_participants', ['user_id', 'is_deleted'], 'ix_chat_participants_user_id_is_deleted');
+
+  // chat_participants: (chat_id, is_deleted) - sendMessage increment unread for all participants
+  await ensureIndex(queryInterface, 'chat_participants', ['chat_id', 'is_deleted'], 'ix_chat_participants_chat_id_is_deleted');
+
+  // messages: (chat_id, is_deleted, id) - getChatMessages cursor pagination
+  // WHERE chat_id=? AND is_deleted=false AND id < cursor ORDER BY id DESC
+  await ensureIndex(queryInterface, 'messages', ['chat_id', 'is_deleted', 'id'], 'ix_messages_chat_id_deleted_id');
+
+  // messages: (chat_id, message_type, is_deleted) - getChatMedia gallery
+  // WHERE chat_id=? AND message_type=? AND is_deleted=false
+  await ensureIndex(queryInterface, 'messages', ['chat_id', 'message_type', 'is_deleted'], 'ix_messages_chat_id_type_deleted');
+
+  // chats: (is_deleted, last_message_at) - admin getAllChats ordering
+  await ensureIndex(queryInterface, 'chats', ['is_deleted', 'last_message_at'], 'ix_chats_deleted_last_message_at');
+
+  // message_receipts: (user_id, read_at) - markMessageRead + markAllRead
+  // WHERE user_id=? AND read_at IS NULL
+  await ensureIndex(queryInterface, 'message_receipts', ['user_id', 'read_at'], 'ix_message_receipts_user_id_read_at');
+
+  console.log('[005-chat-indexes] UP complete.');
+};
+
+export const down = async ({ queryInterface = sequelize.getQueryInterface() } = {}) => {
+  console.log('[005-chat-indexes] DOWN...');
+  const toRemove = [
+    ['chat_participants', 'uq_chat_participant_chat_user'],
+    ['chat_participants', 'ix_chat_participants_user_id_is_deleted'],
+    ['chat_participants', 'ix_chat_participants_chat_id_is_deleted'],
+    ['messages',          'ix_messages_chat_id_deleted_id'],
+    ['messages',          'ix_messages_chat_id_type_deleted'],
+    ['chats',             'ix_chats_deleted_last_message_at'],
+    ['message_receipts',  'ix_message_receipts_user_id_read_at'],
+  ];
+  for (const [table, name] of toRemove) {
+    await removeIndexIfPresent(queryInterface, table, name);
+  }
+  console.log('[005-chat-indexes] DOWN complete.');
+};

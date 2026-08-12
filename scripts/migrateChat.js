@@ -2,9 +2,18 @@ import { DataTypes } from 'sequelize';
 import sequelize from '../src/config/db.js';
 import * as chatMediaMigration from './migrations/002-chat-media-module.js';
 import * as messagePinsMigration from './migrations/003-message-pins.js';
+import * as chatIndexesMigration from './migrations/005-chat-indexes.js';
+import * as outboxEventsMigration from './migrations/006-outbox-events.js';
+import * as userDevicesMigration from './migrations/007-user-devices.js';
 
 const MIGRATIONS_TABLE = 'schema_migrations';
-const migrations = [chatMediaMigration, messagePinsMigration];
+const migrations = [
+  chatMediaMigration,
+  messagePinsMigration,
+  chatIndexesMigration,
+  outboxEventsMigration,
+  userDevicesMigration,
+];
 
 const ensureMigrationsTable = async (queryInterface) => {
   const tables = (await queryInterface.showAllTables()).map((table) =>

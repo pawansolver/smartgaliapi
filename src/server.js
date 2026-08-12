@@ -4,12 +4,15 @@ import env from './config/env.js';
 import { connectDB } from './config/db.js';
 import { initSocket } from './socket.js';
 import { closeRedisClients, createRedisClients } from './config/redis.js';
+import { closeQueueInfrastructure } from './infrastructure/queues/index.js';
 
 // Import enterprise models to ensure they are registered before sync
 import './modules/message_receipt/message_receipt.model.js';
 import './modules/message_reaction/message_reaction.model.js';
 import './modules/message_deletion/message_deletion.model.js';
 import './modules/audit_log/audit_log.model.js';
+import './modules/outbox/outbox_event.model.js';
+import './modules/user_devices/user_device.model.js';
 let httpServer;
 let io;
 let shuttingDown = false;
@@ -53,6 +56,8 @@ const shutdown = async (signal) => {
   try {
     if (io) await new Promise((resolve) => io.close(resolve));
     if (httpServer?.listening) await new Promise((resolve) => httpServer.close(resolve));
+    // Close BullMQ queue producers (API does not run workers)
+    await closeQueueInfrastructure();
     await closeRedisClients();
     process.exitCode = 0;
   } catch (error) {

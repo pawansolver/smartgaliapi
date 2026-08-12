@@ -1,7 +1,6 @@
 import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import jwt from 'jsonwebtoken';
-import UserProfile from './modules/userProfile/userProfile.model.js';
 import User from './modules/user/user.model.js';
 import ChatParticipant from './modules/chat_participant/chat_participant.model.js';
 import Message from './modules/message/message.model.js';
@@ -10,15 +9,24 @@ import { getPubClient, getSubClient, getIsRedisAvailable } from './config/redis.
 import env from './config/env.js';
 import { logger } from './utils/logger.js';
 import { normalizeMediaPayload } from './utils/mediaUrl.js';
+import {
+  markUserOnline,
+  touchUserPresence,
+  handleUserSocketDisconnect,
+  PRESENCE_TTL_SECONDS,
+} from './infrastructure/presence/presence.js';
 
 /**
  * Socket.IO Online Presence & Signaling Layer
  * ─────────────────────────────────────────────────────────────────────────────
  * Drives online status, typing indicators, and real-time message delivery.
- * 
+ *
  * Scalability:
  *  - Uses @socket.io/redis-adapter if Redis is configured, enabling
  *    broadcasts across multiple Node.js server instances seamlessly.
+ *  - Presence offline decisions use adapter fetchSockets so API-1 disconnect
+ *    does not mark a user offline while API-2 still has sockets.
+ *  - Redis TTL heartbeat clears stale is_online after crashes / unclean drops.
  *  - Gracefully falls back to in-memory mode if Redis is down/missing.
  *
  * Events Emitted by Server:
@@ -29,9 +37,15 @@ import { normalizeMediaPayload } from './utils/mediaUrl.js';
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-// userId → set of socketIds mapping (local to this instance)
-// A user might be connected from multiple devices (phone + web)
+// userId → set of socketIds mapping (local to this instance only)
+// Cluster-wide truth uses Socket.IO rooms + Redis presence TTL.
 const userSocketsMap = new Map();
+
+/** Heartbeat interval — keep Redis TTL alive while connected. */
+const PRESENCE_HEARTBEAT_MS = Math.max(
+  15_000,
+  Math.floor((PRESENCE_TTL_SECONDS * 1000) / 3),
+);
 
 // Singleton io reference — used by services to broadcast after DB writes
 let _io = null;
@@ -105,14 +119,32 @@ export const initSocket = (httpServer) => {
     if (!userSocketsMap.has(uid)) userSocketsMap.set(uid, new Set());
     userSocketsMap.get(uid).add(socket.id);
     socket.join(`user:${uid}`);
-    const presenceReady = userSocketsMap.get(uid).size === 1
-      ? UserProfile.update({ is_online: true }, { where: { user_id: uid } })
-        .then(() => socket.broadcast.emit('presence:online', { userId: uid }))
-        .catch((err) => logger.error('SOCKET', 'presence_online_failed', { userId: uid, error: err.message }))
-      : Promise.resolve();
+
+    // Cluster-safe online: DB + Redis TTL; emit only on offline→online transition
+    const presenceReady = markUserOnline(uid)
+      .then((becameOnline) => {
+        if (becameOnline) {
+          socket.broadcast.emit('presence:online', { userId: uid });
+        }
+      })
+      .catch((err) => logger.error('SOCKET', 'presence_online_failed', { userId: uid, error: err.message }));
+
+    const heartbeat = setInterval(() => {
+      touchUserPresence(uid).catch(() => {});
+    }, PRESENCE_HEARTBEAT_MS);
+    if (typeof heartbeat.unref === 'function') heartbeat.unref();
 
     // Backward-compatible event: identity is derived from JWT, never the payload.
+    // Clients cannot mark another user online via payload.userId.
     socket.on('user:online', (_payload = {}, acknowledge) => {
+      touchUserPresence(uid).catch(() => {});
+      if (typeof acknowledge === 'function') {
+        acknowledge({ ok: true, userId: uid });
+      }
+    });
+
+    socket.on('presence:ping', (_payload = {}, acknowledge) => {
+      touchUserPresence(uid).catch(() => {});
       if (typeof acknowledge === 'function') acknowledge({ ok: true, userId: uid });
     });
 
@@ -193,40 +225,57 @@ export const initSocket = (httpServer) => {
 
     // ── disconnect ────────────────────────────────────────────────────────────
     socket.on('disconnect', async () => {
-      const uid = socket.userId;
-      if (uid) {
-        const sockets = userSocketsMap.get(uid);
+      clearInterval(heartbeat);
+      const disconnectUid = socket.userId;
+      if (disconnectUid) {
+        const sockets = userSocketsMap.get(disconnectUid);
         if (sockets) {
           sockets.delete(socket.id);
-          if (sockets.size === 0) {
-            userSocketsMap.delete(uid);
-            await presenceReady;
-            await handleDisconnect(uid, io);
-          }
+          if (sockets.size === 0) userSocketsMap.delete(disconnectUid);
+        }
+        await presenceReady;
+        // Multi-instance safe: only offline when no sockets remain in user room cluster-wide
+        const result = await handleUserSocketDisconnect(io, disconnectUid);
+        if (result.offline) {
+          io.emit('presence:offline', {
+            userId: disconnectUid,
+            last_seen: result.lastSeen,
+          });
         }
       }
-      logger.socketDisconnect({ socketId: socket.id, userId: uid });
+      logger.socketDisconnect({ socketId: socket.id, userId: disconnectUid });
     });
   });
 
   return io;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared disconnect handler
-// ─────────────────────────────────────────────────────────────────────────────
-const handleDisconnect = async (userId, io) => {
-  const lastSeen = new Date();
-  try {
-    await UserProfile.update(
-      { is_online: false, last_seen: lastSeen },
-      { where: { user_id: userId } }
-    );
-  } catch (err) {
-    logger.error('SOCKET', 'presence_offline_failed', { userId, error: err.message });
+/**
+ * Initialise a Socket.IO emitter for background workers (no HTTP listen).
+ * With the Redis adapter attached, emits reach sockets on API instances.
+ */
+export const initSocketEmitter = () => {
+  const io = new Server({
+    cors: {
+      origin: '*',
+      methods: ['GET', 'POST'],
+    },
+    transports: ['websocket', 'polling'],
+  });
+  _io = io;
+
+  if (getIsRedisAvailable()) {
+    const pubClient = getPubClient();
+    const subClient = getSubClient();
+    if (pubClient && subClient) {
+      io.adapter(createAdapter(pubClient, subClient));
+      console.log('✅ Socket.IO emitter: Redis adapter attached (worker → API broadcast)');
+    }
+  } else {
+    console.warn('⚠️ Socket.IO emitter: Redis unavailable — worker emits will not reach API clients');
   }
 
-  io.emit('presence:offline', { userId, last_seen: lastSeen });
+  return io;
 };
 
 /**
@@ -238,6 +287,11 @@ export const broadcastMessage = (io, chatId, message) => {
 
 /**
  * Utility: check if a user is online locally on THIS instance.
- * For global check, query Redis or DB.
+ * For FCM / global checks use getOnlineFlagsForPush (Redis heartbeat).
  */
 export const isUserOnlineLocal = (userId) => userSocketsMap.has(String(userId));
+
+/** Test helper — clear local socket map between unit tests. */
+export const resetLocalPresenceMapForTests = () => {
+  userSocketsMap.clear();
+};
