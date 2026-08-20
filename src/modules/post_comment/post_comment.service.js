@@ -1,111 +1,167 @@
-import PostComment from './post_comment.model.js';
-import UserProfile from '../userProfile/userProfile.model.js';
-import User from '../user/user.model.js';
-import Post from '../post/post.model.js';
-import FeedPost from '../feed/feed_post.model.js';
-import sequelize from '../../config/db.js';
-import { emitNotification } from '../notification/notification.service.js';
+/**
+ * PostComment Service — Phase 9
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 
-export const getCommentsByPost = async (postId) => {
-  return await PostComment.findAll({
-    where: { post_id: postId, is_deleted: false },
-    include: [
-      {
-        model: User,
-        as: 'user',
-        attributes: ['userId'],
-        include: [{ model: UserProfile, as: 'profile', attributes: ['fullName'] }],
-        required: false,
-      }
-    ],
-    order: [['id', 'DESC']],
-  });
+import PostComment from './post_comment.model.js';
+import Post from '../post/post.model.js';
+import User from '../user/user.model.js';
+import UserProfile from '../userProfile/userProfile.model.js';
+import { createNotification } from '../notification/notification.service.js';
+import { sendToUser } from '../../infrastructure/notifications/push.service.js';
+import { logger } from '../../utils/logger.js';
+import {
+  postCommentsTotal,
+  postCommentsFailedTotal,
+} from '../../monitoring/metrics.js';
+
+const MAX_COMMENT_LENGTH = 2000;
+const SAFE_USER_ATTRS = ['userId', 'userName'];
+const SAFE_PROFILE_ATTRS = ['fullName', 'avatarUrl'];
+
+export class CommentError extends Error {
+  constructor(message, statusCode = 400) {
+    super(message);
+    this.name = 'CommentError';
+    this.statusCode = statusCode;
+  }
+}
+
+/** Mutable deps for tests */
+export const commentDeps = {
+  createNotification: (data) => createNotification(data),
+  sendToUser: (args) => sendToUser(args),
 };
 
-export const createComment = async (commentData) => {
-  const transaction = await sequelize.transaction();
-  try {
-    const post = await FeedPost.findOne({
-      where: { id: commentData.post_id, is_deleted: false, is_active: true },
-      transaction,
-    });
-    if (!post) {
-      await transaction.rollback();
-      return null;
-    }
+/**
+ * Add a comment to a post.
+ * @param {number} userId - from JWT
+ * @param {number} postId - from URL param
+ * @param {string} content - comment text
+ * @param {string} correlationId
+ */
+export const addComment = async (userId, postId, content, correlationId) => {
+  if (!content || !content.trim()) {
+    postCommentsFailedTotal.inc({ reason: 'empty_content' });
+    throw new CommentError('Comment content cannot be empty.', 400);
+  }
+  if (content.length > MAX_COMMENT_LENGTH) {
+    postCommentsFailedTotal.inc({ reason: 'content_too_long' });
+    throw new CommentError(`Comment cannot exceed ${MAX_COMMENT_LENGTH} characters.`, 400);
+  }
 
-    const comment = await PostComment.create(commentData, { transaction });
-    await post.increment('comments_count', { by: 1, transaction });
-    await transaction.commit();
-    await post.reload();
-    await comment.reload({
+  // Post must exist
+  const post = await Post.findOne({
+    where: { id: postId, is_deleted: false },
+    attributes: ['id', 'user_id'],
+  });
+  if (!post) {
+    postCommentsFailedTotal.inc({ reason: 'post_not_found' });
+    throw new CommentError('Post not found.', 404);
+  }
+
+  const comment = await PostComment.create({
+    post_id: postId,
+    user_id: userId,
+    content: content.trim(),
+    is_active: true,
+    is_deleted: false,
+    created_by: userId,
+  });
+
+  postCommentsTotal.inc();
+  logger.info('POST_COMMENT', 'comment_added', {
+    correlationId,
+    postId: Number(postId),
+    commentId: Number(comment.id),
+  });
+
+  // Notify post author (non-blocking)
+  const postAuthorId = Number(post.user_id);
+  if (postAuthorId !== Number(userId)) {
+    try {
+      await commentDeps.createNotification({
+        user_id: postAuthorId,
+        title: 'New Comment',
+        message: 'Someone commented on your post.',
+        type: 'info',
+        data: { type: 'POST_COMMENT', postId: Number(postId), commentId: Number(comment.id) },
+        created_by: userId,
+        is_active: true,
+        is_deleted: false,
+      });
+      await commentDeps.sendToUser({
+        userId: postAuthorId,
+        title: 'New Comment',
+        body: 'Someone commented on your post.',
+        data: { type: 'POST_COMMENT', postId: String(postId) },
+      });
+    } catch (notifErr) {
+      logger.error('POST_COMMENT', 'notification_failed', {
+        correlationId,
+        error: notifErr.message,
+      });
+    }
+  }
+
+  // Return comment with author info so Flutter can render immediately
+  return {
+    id: Number(comment.id),
+    postId: Number(postId),
+    content: comment.content,
+    createdAt: comment.created_at,
+    author: {
+      userId: Number(userId),
+      userName: null,
+      fullName: null,
+      avatarUrl: null,
+    },
+  };
+};
+
+/**
+ * Get comments for a post (paginated).
+ */
+export const getComments = async (postId, { page = 1, limit = 20 } = {}) => {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+  const offset = (safePage - 1) * safeLimit;
+
+  const { count, rows } = await PostComment.findAndCountAll({
+    where: { post_id: postId, is_deleted: false, parent_id: null },
+    include: [{
+      model: User,
+      as: 'user',
+      attributes: SAFE_USER_ATTRS,
       include: [{
-        model: User,
-        as: 'user',
-        attributes: ['userId', 'userName'],
-        include: [{ model: UserProfile, as: 'profile', attributes: ['fullName'] }],
+        model: UserProfile,
+        as: 'profile',
+        attributes: SAFE_PROFILE_ATTRS,
         required: false,
       }],
-    });
-
-    // ── Real-time notification to the post owner ──
-    const actorName =
-      comment.user?.profile?.fullName || comment.user?.userName || 'Someone';
-    await emitNotification({
-      recipientId: post.user_id,
-      actorId: commentData.user_id,
-      type: 'info',
-      title: 'New comment',
-      message: `${actorName} commented on your post`,
-      data: { kind: 'post_comment', postId: commentData.post_id, commentId: comment.id },
-    });
-
-    return {
-      comment,
-      commentsCount: Number(post.comments_count) || 0,
-    };
-  } catch (error) {
-    await transaction.rollback();
-    throw error;
-  }
-};
-
-export const getAllComments = async () => {
-  return await PostComment.findAll({
-    where: { is_deleted: false },
-    include: [
-      { model: User, as: 'user', attributes: ['userId', 'userName', 'profile_image'] },
-      { model: Post, as: 'post', attributes: ['id', 'content'] }
-    ]
+    }],
+    order: [['created_at', 'ASC']],
+    limit: safeLimit,
+    offset,
   });
+
+  return {
+    total: count,
+    page: safePage,
+    limit: safeLimit,
+    totalPages: Math.ceil(count / safeLimit),
+    comments: rows.map((c) => ({
+      id: Number(c.id),
+      content: c.content,
+      createdAt: c.created_at,
+      author: {
+        userId: Number(c.user.userId),
+        userName: c.user.userName || null,
+        fullName: c.user.profile?.fullName || null,
+        avatarUrl: c.user.profile?.avatarUrl || null,
+      },
+    })),
+  };
 };
 
-export const getCommentById = async (id) => {
-  return await PostComment.findOne({
-    where: { id, is_deleted: false },
-    include: [
-      { model: User, as: 'user', attributes: ['userId', 'userName', 'profile_image'] },
-      { model: Post, as: 'post', attributes: ['id', 'content'] },
-      { model: PostComment, as: 'replies' }
-    ]
-  });
-};
-
-export const updateComment = async (id, updateData) => {
-  const comment = await PostComment.findOne({ where: { id, is_deleted: false } });
-  if (!comment) return null;
-  return await comment.update({ ...updateData, updatedAt: new Date() });
-};
-
-export const softDeleteComment = async (id, deletedRemarks, updated_by) => {
-  const comment = await PostComment.findOne({ where: { id, is_deleted: false } });
-  if (!comment) return null;
-  return await comment.update({ is_deleted: true, deletedRemarks, updated_by, updatedAt: new Date() });
-};
-
-export const bulkSoftDeleteComments = async (ids, deletedRemarks, updated_by) => {
-  return await PostComment.update(
-    { is_deleted: true, deletedRemarks, updated_by, updatedAt: new Date() },
-    { where: { id: ids, is_deleted: false } }
-  );
-};
+export default { addComment, getComments };

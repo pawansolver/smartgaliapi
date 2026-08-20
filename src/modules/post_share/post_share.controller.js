@@ -3,7 +3,12 @@ import * as postShareService from './post_share.service.js';
 
 export const createShare = async (req, res, next) => {
   try {
-    const share = await postShareService.createShare(req.body);
+    const shareData = {
+      ...req.body,
+      user_id: req.user.id,
+      created_by: req.user.id,
+    };
+    const share = await postShareService.createShare(shareData);
     return successResponse(res, 201, 'Post share created successfully', share);
   } catch (error) {
     next(error);

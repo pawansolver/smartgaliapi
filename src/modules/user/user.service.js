@@ -9,7 +9,10 @@ export const createUser = async (userData) => {
 export const getAllUsers = async () => {
   return await User.findAll({
     where: { is_deleted: false },
-    include: [{ model: Role, as: 'role' }]
+    attributes: ['userId', 'userName', 'email', 'phone'],
+    include: [
+      { model: UserProfile, as: 'profile', attributes: ['avatarUrl', 'fullName'] }
+    ]
   });
 };
 
@@ -80,3 +83,4 @@ export const verifyUser = async (userId) => {
   if (!user) return null;
   return await user.update({ is_verified: true, status: 'active', updatedAt: new Date() });
 };
+

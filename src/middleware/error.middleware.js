@@ -1,4 +1,4 @@
-import { errorResponse } from '../utils/response.js';
+﻿import { errorResponse } from '../utils/response.js';
 import env from '../config/env.js';
 import multer from 'multer';
 
@@ -43,7 +43,8 @@ export const errorHandler = (err, req, res, next) => {
     return errorResponse(res, 400, err.message);
   }
 
-  return errorResponse(res, statusCode, message, env.nodeEnv === 'development' ? err.stack : null);
+  // Never leak stack traces or internal details to clients in production
+  return errorResponse(res, statusCode, message, env.isProduction ? undefined : err.stack);
 };
 
 /**
@@ -54,3 +55,4 @@ export const notFoundHandler = (req, res, next) => {
   err.statusCode = 404;
   next(err);
 };
+

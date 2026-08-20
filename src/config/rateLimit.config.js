@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Centralized rate-limit configuration (env-driven).
  *
  * Defaults preserve Phase 2 / existing middleware values.
@@ -66,6 +66,36 @@ export const rateLimitConfig = {
     windowMs: toInt(process.env.RATE_LIMIT_UPLOAD_WINDOW_MS, 300_000),
     max: toInt(process.env.RATE_LIMIT_UPLOAD_MAX, 20),
   },
+  // Post creation — 10/min per user (spam protection)
+  postCreate: {
+    windowMs: toInt(process.env.RATE_LIMIT_POST_CREATE_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_POST_CREATE_MAX, 10),
+  },
+  // Feed fetch — 60/min per user
+  feedFetch: {
+    windowMs: toInt(process.env.RATE_LIMIT_FEED_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_FEED_MAX, 60),
+  },
+  // Like — 60/min per user
+  postLike: {
+    windowMs: toInt(process.env.RATE_LIMIT_POST_LIKE_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_POST_LIKE_MAX, 60),
+  },
+  // Comment — 20/min per user
+  postComment: {
+    windowMs: toInt(process.env.RATE_LIMIT_POST_COMMENT_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_POST_COMMENT_MAX, 20),
+  },
+  // Media upload — 20/min per user
+  mediaUpload: {
+    windowMs: toInt(process.env.RATE_LIMIT_MEDIA_UPLOAD_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_MEDIA_UPLOAD_MAX, 20),
+  },
+  // Follow — 30 follows per minute per user (anti-spam)
+  follow: {
+    windowMs: toInt(process.env.RATE_LIMIT_FOLLOW_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_FOLLOW_MAX, 30),
+  },
   search: {
     windowMs: toInt(process.env.RATE_LIMIT_SEARCH_WINDOW_MS, 60_000),
     max: toInt(process.env.RATE_LIMIT_SEARCH_MAX, 30),
@@ -122,7 +152,7 @@ export const resolveEffectiveMax = ({
 
   if (category === 'security') {
     if (rateLimitConfig.redisFailureMode.security === 'fail_open') {
-      // Explicit opt-in only — not the default. Unlimited when Redis down.
+      // Explicit opt-in only â€” not the default. Unlimited when Redis down.
       return Number.MAX_SAFE_INTEGER;
     }
     const emergency = emergencyMax ?? Math.max(1, Math.floor(max / 3));
@@ -137,3 +167,5 @@ export const resolveEffectiveMax = ({
 };
 
 export default rateLimitConfig;
+
+

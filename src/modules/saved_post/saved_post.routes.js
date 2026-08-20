@@ -1,7 +1,10 @@
 import express from 'express';
 import * as savedPostController from './saved_post.controller.js';
+import { authenticate } from '../../middleware/auth.middleware.js';
 
 const router = express.Router();
+
+router.use(authenticate);
 
 /**
  * @swagger

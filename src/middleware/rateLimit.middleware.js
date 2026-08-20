@@ -1,4 +1,4 @@
-import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
+﻿import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { errorResponse } from '../utils/response.js';
 import { logger } from '../utils/logger.js';
@@ -7,14 +7,14 @@ import { rateLimitConfig, resolveEffectiveMax } from '../config/rateLimit.config
 
 /**
  * Distributed Rate Limiting
- * ─────────────────────────────────────────────────────────────────────────────
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * Redis-backed via rate-limit-redis when Redis is available so API-1/2/3 share
  * counters. Falls back to in-memory SharedCounterStore when Redis is unavailable
- * (per-instance limits only — documented fail-safe).
+ * (per-instance limits only â€” documented fail-safe).
  *
  * Categories:
- *  - security: auth/OTP/signup/reset — emergencyMax when Redis is down
- *  - general:  messages/search/uploads — availability-friendly local fallback
+ *  - security: auth/OTP/signup/reset â€” emergencyMax when Redis is down
+ *  - general:  messages/search/uploads â€” availability-friendly local fallback
  *
  * Store is lazy: Redis connects after modules load (server.js createRedisClients),
  * so each increment resolves the client at request time.
@@ -26,13 +26,13 @@ import { rateLimitConfig, resolveEffectiveMax } from '../config/rateLimit.config
  *
  * Namespace (with REDIS_KEY_PREFIX=smartgali:):
  *   smartgali:ratelimit:<policy>:<clientKey>
- * ─────────────────────────────────────────────────────────────────────────────
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  */
 
 /** Mutable for tests: inject Redis client / shared store factory. */
 export const rateLimitDeps = {
   getRedisClient: () => (getIsRedisAvailable() ? getRateLimitRedis() : null),
-  /** Optional override: (policyPrefix) => Store — multi-instance unit tests */
+  /** Optional override: (policyPrefix) => Store â€” multi-instance unit tests */
   createStoreOverride: null,
   /** When true, disable singleCount validation (multi-instance sims / Redis IT) */
   allowMultiInstance: false,
@@ -221,7 +221,7 @@ export const buildRateLimitKey = (req, { identityFields = [] } = {}) => {
     return `${ipKeyGenerator(req.ip)}:${suppliedIdentity.trim().toLowerCase()}`;
   }
 
-  // Authenticated identity ONLY from JWT middleware — never body/query
+  // Authenticated identity ONLY from JWT middleware â€” never body/query
   const userId = req.user?.id ?? req.user?.userId ?? req.user?.sub;
   if (userId !== undefined && userId !== null && `${userId}`.length > 0) {
     return `user:${userId}`;
@@ -321,7 +321,7 @@ export const getRateLimitStoreMode = () => {
   return 'memory';
 };
 
-// ── Pre-configured limiters (values from rateLimit.config.js) ────────────────
+// â”€â”€ Pre-configured limiters (values from rateLimit.config.js) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const generalApiLimiter = makeRateLimiter({
   name: 'general',
@@ -358,6 +358,54 @@ export const uploadLimiter = makeRateLimiter({
   windowMs: rateLimitConfig.upload.windowMs,
   max: rateLimitConfig.upload.max,
   message: `Too many uploads. Max ${rateLimitConfig.upload.max} per 5 minutes.`,
+});
+
+export const postCreateLimiter = makeRateLimiter({
+  name: 'post_create',
+  category: 'general',
+  windowMs: rateLimitConfig.postCreate.windowMs,
+  max: rateLimitConfig.postCreate.max,
+  message: 'Too many posts created. Please slow down.',
+});
+
+export const feedFetchLimiter = makeRateLimiter({
+  name: 'feed_fetch',
+  category: 'general',
+  windowMs: rateLimitConfig.feedFetch.windowMs,
+  max: rateLimitConfig.feedFetch.max,
+  message: 'Too many feed requests. Please slow down.',
+});
+
+export const postLikeLimiter = makeRateLimiter({
+  name: 'post_like',
+  category: 'general',
+  windowMs: rateLimitConfig.postLike.windowMs,
+  max: rateLimitConfig.postLike.max,
+  message: 'Too many like requests. Please slow down.',
+});
+
+export const postCommentLimiter = makeRateLimiter({
+  name: 'post_comment',
+  category: 'general',
+  windowMs: rateLimitConfig.postComment.windowMs,
+  max: rateLimitConfig.postComment.max,
+  message: 'Too many comment requests. Please slow down.',
+});
+
+export const mediaUploadLimiter = makeRateLimiter({
+  name: 'media_upload',
+  category: 'general',
+  windowMs: rateLimitConfig.mediaUpload.windowMs,
+  max: rateLimitConfig.mediaUpload.max,
+  message: 'Too many upload requests. Please slow down.',
+});
+
+export const followLimiter = makeRateLimiter({
+  name: 'follow',
+  category: 'general',
+  windowMs: rateLimitConfig.follow.windowMs,
+  max: rateLimitConfig.follow.max,
+  message: 'Too many follow/unfollow requests. Please slow down.',
 });
 
 export const searchLimiter = makeRateLimiter({
@@ -441,3 +489,5 @@ export const authRefreshLimiter = makeRateLimiter({
   emergencyMax: rateLimitConfig.authRefresh.emergencyMax,
   message: 'Too many token refresh attempts. Please try again later.',
 });
+
+

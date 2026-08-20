@@ -1,9 +1,10 @@
-import Redis from 'ioredis';
+﻿import Redis from 'ioredis';
+import { setCacheClientRef, trackRedis } from '../monitoring/redisMetrics.js';
 import env from './env.js';
 
 /**
  * Redis Configuration
- * ─────────────────────────────────────────────────────────────────────────────
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * Uses ioredis which supports:
  *  - Automatic reconnection
  *  - Sentinel / Cluster mode (configure via REDIS_URL or REDIS_CLUSTER_NODES)
@@ -11,7 +12,7 @@ import env from './env.js';
  *
  * In development, if Redis is not configured the system falls back gracefully
  * using a "null adapter" so Socket.IO still works on a single instance.
- * ─────────────────────────────────────────────────────────────────────────────
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  */
 
 const REDIS_URL  = process.env.REDIS_URL || null;
@@ -30,7 +31,7 @@ const redisOptions = {
   lazyConnect:      true,   // Don't auto-connect; let us handle it
   retryStrategy: (times) => {
     if (times > 10) {
-      console.warn('⚠️  Redis: max reconnect attempts reached. Running without Redis.');
+      console.warn('âš ï¸  Redis: max reconnect attempts reached. Running without Redis.');
       return null; // Stop retrying
     }
     return Math.min(times * 200, 3000); // exponential back-off
@@ -41,7 +42,7 @@ const redisOptions = {
   connectTimeout:           Number(process.env.REDIS_CONNECT_TIMEOUT_MS) || 2000,
 };
 
-// ── Create two clients (pub + sub) needed by @socket.io/redis-adapter ────────
+// â”€â”€ Create two clients (pub + sub) needed by @socket.io/redis-adapter â”€â”€â”€â”€â”€â”€â”€â”€
 let pubClient  = null;
 let subClient  = null;
 let cacheClient = null;
@@ -67,11 +68,11 @@ export const createRedisClients = async () => {
     await pubClient.ping();
     isRedisAvailable = true;
 
-    console.log('✅ Redis connected successfully.');
+    console.log('âœ… Redis connected successfully.');
 
   } catch (err) {
     isRedisAvailable = false;
-    console.warn(`⚠️  Redis unavailable (${err.message}). Falling back to in-process mode. Multi-instance scaling will NOT work.`);
+    console.warn(`âš ï¸  Redis unavailable (${err.message}). Falling back to in-process mode. Multi-instance scaling will NOT work.`);
     await Promise.allSettled(
       [pubClient, subClient, cacheClient]
         .filter(Boolean)
@@ -101,7 +102,7 @@ export const closeRedisClients = async () => {
   }));
 };
 
-// ── Cache helpers (safe — no-ops if Redis is down) ───────────────────────────
+// â”€â”€ Cache helpers (safe â€” no-ops if Redis is down) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const cacheSet = async (key, value, ttlSeconds = 300) => {
   if (!cacheClient) return;
@@ -123,7 +124,7 @@ export const cacheDel = async (key) => {
   try { await cacheClient.del(key); } catch { /* swallow */ }
 };
 
-// ── Idempotency key helpers (TTL = 24 h) ─────────────────────────────────────
+// â”€â”€ Idempotency key helpers (TTL = 24 h) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const IDEMPOTENCY_TTL = 86400; // 24 hours in seconds
 
 export const checkIdempotencyKey = async (key) => {
@@ -141,7 +142,7 @@ export const storeIdempotencyKey = async (key, payload) => {
   } catch { /* swallow */ }
 };
 
-// ── Rate limiter store helper (for express-rate-limit redis store) ───────────
+// â”€â”€ Rate limiter store helper (for express-rate-limit redis store) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const getRateLimitRedis = () => cacheClient;
 
 export const getPubClient  = () => pubClient;
@@ -149,3 +150,4 @@ export const getSubClient  = () => subClient;
 export const getIsRedisAvailable = () => isRedisAvailable;
 
 export default { createRedisClients, closeRedisClients, cacheSet, cacheGet, cacheDel };
+

@@ -1,6 +1,5 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../../config/db.js';
-import { commonFields } from '../../utils/commonFields.js';
 import User from '../user/user.model.js';
 import Post from '../post/post.model.js';
 
@@ -35,7 +34,19 @@ const PostComment = sequelize.define('PostComment', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
-  ...commonFields
+  is_active: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
+  is_deleted: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  created_at: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+    allowNull: true,
+  },
 }, {
   timestamps: false,
   tableName: 'post_comments',

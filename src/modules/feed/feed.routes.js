@@ -1,85 +1,35 @@
-import express from 'express';
-import * as feedController from './feed.controller.js';
-import { authenticate } from '../../middleware/auth.middleware.js';
+﻿/**
+ * Feed Routes — Phase 9
+ * Mounted at /api/v1/feed
+ */
+import express from "express";
+import { authenticate } from "../../middleware/auth.middleware.js";
+import { feedFetchLimiter } from "../../middleware/rateLimit.middleware.js";
+import { homeFeed } from "./feed.controller.js";
 
 const router = express.Router();
+router.use(authenticate);
 
 /**
  * @swagger
- * tags:
- *   - name: Feed
- *     description: Hyperlocal Neighborhood Feed & Notice Board
- */
-
-/**
- * @swagger
- * /api/v1/feed:
+ * /api/v1/feed/home:
  *   get:
- *     summary: Get hyperlocal home feed (notices + timeline posts within 5km)
+ *     summary: Get personalized home feed (follow-based)
  *     tags: [Feed]
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: query
- *         name: page
- *         schema: { type: integer, default: 1 }
  *       - in: query
  *         name: limit
- *         schema: { type: integer, default: 10 }
+ *         schema: { type: integer, default: 20, maximum: 50 }
+ *       - in: query
+ *         name: cursor
+ *         schema: { type: string }
+ *         description: Base64 cursor from previous response
  *     responses:
  *       200:
- *         description: Feed with notices and timeline
- *       422:
- *         description: User location not set
+ *         description: Paginated feed of posts from followed users
  */
-router.get('/', authenticate, feedController.getHomeFeed);
-
-/**
- * @swagger
- * /api/v1/feed/post:
- *   post:
- *     summary: Create a new post in the hyperlocal feed
- *     tags: [Feed]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [content]
- *             properties:
- *               content:
- *                 type: string
- *               mediaUrl:
- *                 type: string
- *                 nullable: true
- *     responses:
- *       201:
- *         description: Post created successfully
- */
-router.post('/post', authenticate, feedController.createPost);
-
-/**
- * @swagger
- * /api/v1/feed/post/{id}/like:
- *   post:
- *     summary: Toggle like on a post (like/unlike)
- *     tags: [Feed]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: integer }
- *     responses:
- *       200:
- *         description: Like toggled
- *       404:
- *         description: Post not found
- */
-router.post('/post/:id/like', authenticate, feedController.toggleLikePost);
+router.get("/home", feedFetchLimiter, homeFeed);
 
 export default router;

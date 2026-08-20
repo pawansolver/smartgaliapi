@@ -19,7 +19,7 @@ import * as deviceService from '../../modules/user_devices/user_device.service.j
 const maskToken = (token) => {
   if (!token || typeof token !== 'string') return '[empty]';
   if (token.length <= 8) return '***';
-  return `${token.slice(0, 4)}…${token.slice(-4)}`;
+  return `${token.slice(0, 4)}â€¦${token.slice(-4)}`;
 };
 
 /** Mutable deps for tests. */
@@ -52,9 +52,6 @@ export const sendToDevice = async ({
   const stringData = Object.fromEntries(
     Object.entries(data || {}).map(([k, v]) => [k, v == null ? '' : String(v)]),
   );
-
-  // Phase 7: track FCM call latency
-  const _fcmStart = process.hrtime.bigint();
 
   try {
     await messaging.send({
@@ -90,13 +87,11 @@ export const sendToDevice = async ({
     });
 
     if (permanent) {
-      fcmNotificationsFailed.inc({ reason: 'permanent' });
       await pushServiceDeps.deactivateByToken(token, error.code || 'invalid_token').catch(() => {});
       return { ok: false, permanent: true, error: error.message };
     }
 
     if (isTransientFcmError(error)) {
-      fcmNotificationsFailed.inc({ reason: 'transient' });
       const err = new Error(error.message || 'Transient FCM error');
       err.retriable = true;
       err.code = error.code;
@@ -154,3 +149,5 @@ export const sendToUser = async ({ userId, title, body, data }) => {
 };
 
 export default { sendToDevice, sendToDevices, sendToUser };
+
+

@@ -1,4 +1,4 @@
-import { Server } from 'socket.io';
+﻿import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import jwt from 'jsonwebtoken';
 import User from './modules/user/user.model.js';
@@ -10,6 +10,13 @@ import env from './config/env.js';
 import { logger } from './utils/logger.js';
 import { normalizeMediaPayload } from './utils/mediaUrl.js';
 import {
+  socketConnectionsActive,
+  socketConnectionsTotal,
+  socketDisconnectionsTotal,
+  socketConnectionErrors,
+  presenceUpdatesTotal,
+} from './monitoring/metrics.js';
+import {
   markUserOnline,
   touchUserPresence,
   handleUserSocketDisconnect,
@@ -18,7 +25,7 @@ import {
 
 /**
  * Socket.IO Online Presence & Signaling Layer
- * ─────────────────────────────────────────────────────────────────────────────
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * Drives online status, typing indicators, and real-time message delivery.
  *
  * Scalability:
@@ -34,20 +41,20 @@ import {
  *   - 'presence:offline'  { userId, last_seen }
  *   - 'chat:message'      { message }
  *   - 'chat:typing'       { chatId, userId, isTyping }
- * ─────────────────────────────────────────────────────────────────────────────
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  */
 
-// userId → set of socketIds mapping (local to this instance only)
+// userId â†’ set of socketIds mapping (local to this instance only)
 // Cluster-wide truth uses Socket.IO rooms + Redis presence TTL.
 const userSocketsMap = new Map();
 
-/** Heartbeat interval — keep Redis TTL alive while connected. */
+/** Heartbeat interval â€” keep Redis TTL alive while connected. */
 const PRESENCE_HEARTBEAT_MS = Math.max(
   15_000,
   Math.floor((PRESENCE_TTL_SECONDS * 1000) / 3),
 );
 
-// Singleton io reference — used by services to broadcast after DB writes
+// Singleton io reference â€” used by services to broadcast after DB writes
 let _io = null;
 
 /**
@@ -77,16 +84,16 @@ export const initSocket = (httpServer) => {
   // Store singleton reference for getIO()
   _io = io;
 
-  // ── Redis Adapter Setup ───────────────────────────────────────────────────
+  // â”€â”€ Redis Adapter Setup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (getIsRedisAvailable()) {
     const pubClient = getPubClient();
     const subClient = getSubClient();
     if (pubClient && subClient) {
       io.adapter(createAdapter(pubClient, subClient));
-      console.log('✅ Socket.IO: Redis adapter attached (Multi-instance sync ON)');
+      console.log('âœ… Socket.IO: Redis adapter attached (Multi-instance sync ON)');
     }
   } else {
-    console.warn('⚠️ Socket.IO: Redis adapter skipped (Running in single-instance mode)');
+    console.warn('âš ï¸ Socket.IO: Redis adapter skipped (Running in single-instance mode)');
   }
 
   // Authenticate before any event handler can trust the socket identity.
@@ -108,6 +115,7 @@ export const initSocket = (httpServer) => {
       socket.user = { ...decoded, id: user.userId };
       return next();
     } catch (error) {
+      socketConnectionErrors.inc();
       return next(new Error(error.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token'));
     }
   });
@@ -115,15 +123,18 @@ export const initSocket = (httpServer) => {
   io.on('connection', (socket) => {
     const uid = socket.userId;
     logger.socketConnect({ socketId: socket.id, userId: uid });
+    socketConnectionsTotal.inc();
+    socketConnectionsActive.inc();
 
     if (!userSocketsMap.has(uid)) userSocketsMap.set(uid, new Set());
     userSocketsMap.get(uid).add(socket.id);
     socket.join(`user:${uid}`);
 
-    // Cluster-safe online: DB + Redis TTL; emit only on offline→online transition
+    // Cluster-safe online: DB + Redis TTL; emit only on offlineâ†’online transition
     const presenceReady = markUserOnline(uid)
       .then((becameOnline) => {
         if (becameOnline) {
+          presenceUpdatesTotal.inc({ type: 'online' });
           socket.broadcast.emit('presence:online', { userId: uid });
         }
       })
@@ -148,7 +159,7 @@ export const initSocket = (httpServer) => {
       if (typeof acknowledge === 'function') acknowledge({ ok: true, userId: uid });
     });
 
-    // ── chat:typing (Typing Indicators) ───────────────────────────────────────
+    // â”€â”€ chat:typing (Typing Indicators) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     socket.on('chat:typing', ({ chatId, isTyping } = {}) => {
       if (!chatId || !socket.rooms.has(`chat:${chatId}`)) return;
       // Broadcast to the chat room (excluding the sender)
@@ -159,7 +170,7 @@ export const initSocket = (httpServer) => {
       });
     });
 
-    // ── user:join:chat ────────────────────────────────────────────────────────
+    // â”€â”€ user:join:chat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     socket.on('user:join:chat', async ({ chatId } = {}, acknowledge) => {
       if (!chatId) return typeof acknowledge === 'function' && acknowledge({ ok: false, error: 'chatId is required' });
       try {
@@ -178,13 +189,13 @@ export const initSocket = (httpServer) => {
       }
     });
 
-    // ── user:leave:chat ───────────────────────────────────────────────────────
+    // â”€â”€ user:leave:chat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     socket.on('user:leave:chat', ({ chatId }) => {
       if (!chatId) return;
       socket.leave(`chat:${chatId}`);
     });
 
-    // ── message:delivered (Double Grey Tick) ──────────────────────────────────
+    // â”€â”€ message:delivered (Double Grey Tick) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     socket.on('message:delivered', async ({ messageId } = {}, acknowledge) => {
       try {
         const message = await Message.findOne({
@@ -223,7 +234,7 @@ export const initSocket = (httpServer) => {
       }
     });
 
-    // ── disconnect ────────────────────────────────────────────────────────────
+    // â”€â”€ disconnect â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     socket.on('disconnect', async () => {
       clearInterval(heartbeat);
       const disconnectUid = socket.userId;
@@ -237,6 +248,7 @@ export const initSocket = (httpServer) => {
         // Multi-instance safe: only offline when no sockets remain in user room cluster-wide
         const result = await handleUserSocketDisconnect(io, disconnectUid);
         if (result.offline) {
+          presenceUpdatesTotal.inc({ type: 'offline' });
           io.emit('presence:offline', {
             userId: disconnectUid,
             last_seen: result.lastSeen,
@@ -244,6 +256,8 @@ export const initSocket = (httpServer) => {
         }
       }
       logger.socketDisconnect({ socketId: socket.id, userId: disconnectUid });
+      socketDisconnectionsTotal.inc();
+      socketConnectionsActive.dec();
     });
   });
 
@@ -269,10 +283,10 @@ export const initSocketEmitter = () => {
     const subClient = getSubClient();
     if (pubClient && subClient) {
       io.adapter(createAdapter(pubClient, subClient));
-      console.log('✅ Socket.IO emitter: Redis adapter attached (worker → API broadcast)');
+      console.log('âœ… Socket.IO emitter: Redis adapter attached (worker â†’ API broadcast)');
     }
   } else {
-    console.warn('⚠️ Socket.IO emitter: Redis unavailable — worker emits will not reach API clients');
+    console.warn('âš ï¸ Socket.IO emitter: Redis unavailable â€” worker emits will not reach API clients');
   }
 
   return io;
@@ -291,7 +305,8 @@ export const broadcastMessage = (io, chatId, message) => {
  */
 export const isUserOnlineLocal = (userId) => userSocketsMap.has(String(userId));
 
-/** Test helper — clear local socket map between unit tests. */
+/** Test helper â€” clear local socket map between unit tests. */
 export const resetLocalPresenceMapForTests = () => {
   userSocketsMap.clear();
 };
+

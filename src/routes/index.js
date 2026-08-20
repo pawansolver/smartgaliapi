@@ -26,6 +26,7 @@ import societyParkingRoutes from '../modules/society_parking/society_parking.rou
 import societyPollRoutes from '../modules/society_poll/society_poll.routes.js';
 import mediaFileRoutes from '../modules/media_file/media_file.routes.js';
 import postRoutes from '../modules/post/post.routes.js';
+import feedRoutes from '../modules/feed/feed.routes.js';
 import postLikeRoutes from '../modules/post_like/post_like.routes.js';
 import postCommentRoutes from '../modules/post_comment/post_comment.routes.js';
 import postShareRoutes from '../modules/post_share/post_share.routes.js';
@@ -34,6 +35,7 @@ import eventRoutes from '../modules/event/event.routes.js';
 import eventCategoryRoutes from '../modules/event_category/event_category.routes.js';
 import eventParticipantRoutes from '../modules/event_participant/event_participant.routes.js';
 import followRoutes from '../modules/follow/follow.routes.js';
+import userFollowRoutes from '../modules/follow/follow.routes.js'; // PRD: /users/follow, /users/followers, /users/following, /users/unfollow/:id
 import chatRoutes from '../modules/chat/chat.routes.js';
 import chatParticipantRoutes from '../modules/chat_participant/chat_participant.routes.js';
 import messageRoutes from '../modules/message/message.routes.js';
@@ -44,7 +46,6 @@ import adBannerRoutes from '../modules/ad_banner/ad_banner.routes.js';
 import adCampaignRoutes from '../modules/ad_campaign/ad_campaign.routes.js';
 import adSponsoredRoutes from '../modules/ad_sponsored/ad_sponsored.routes.js';
 import analyticsRoutes from '../modules/analytics/analytics.routes.js';
-import feedRoutes from '../modules/feed/feed.routes.js';
 import profileRoutes from '../modules/profile/profile.routes.js';
 import authRoutes from '../modules/auth/auth.routes.js';
 import deviceRoutes from '../modules/user_devices/user_device.routes.js';
@@ -63,7 +64,6 @@ router.use('/user-profile', userProfileRoutes);
 router.use('/profile', profileRoutes);
 router.use('/auth', authRoutes);
 router.use('/device', deviceRoutes);
-router.use('/feed', feedRoutes);
 router.use('/community-category', communityCategoryRoutes);
 router.use('/community', communityRoutes);
 router.use('/community-member', communityMemberRoutes);
@@ -87,6 +87,7 @@ router.use('/society-parking', societyParkingRoutes);
 router.use('/society-poll', societyPollRoutes);
 router.use('/media-file', mediaFileRoutes);
 router.use('/post', postRoutes);
+router.use('/feed', feedRoutes);
 router.use('/post-like', postLikeRoutes);
 router.use('/post-comment', postCommentRoutes);
 router.use('/post-share', postShareRoutes);
@@ -94,7 +95,8 @@ router.use('/saved-post', savedPostRoutes);
 router.use('/event', eventRoutes);
 router.use('/event-category', eventCategoryRoutes);
 router.use('/event-participant', eventParticipantRoutes);
-router.use('/follow', followRoutes);
+router.use('/follow', followRoutes); // legacy admin CRUD routes
+router.use('/users', userFollowRoutes);  // PRD Phase 8: follow/followers/following/unfollow
 router.use('/chat', chatRoutes);
 router.use('/chat-participant', chatParticipantRoutes);
 router.use('/message', messageRoutes);
@@ -112,3 +114,5 @@ router.get('/health', (req, res) => {
 });
 
 export default router;
+
+

@@ -1,58 +1,41 @@
+﻿/**
+ * Follow Routes — Phase 8
+ * ─────────────────────────────────────────────────────────────────────────────
+ * All routes require JWT authentication.
+ * Rate-limited via existing distributed Redis rate limiter.
+ *
+ * Mounted at /api/v1/users by routes/index.js
+ *
+ * PRD-required endpoints:
+ *   POST   /follow              — follow a user
+ *   GET    /followers           — my followers
+ *   GET    /following           — users I follow
+ *   DELETE /unfollow/:id        — unfollow a user
+ */
+
 import express from 'express';
-import * as followController from './follow.controller.js';
+import { authenticate } from '../../middleware/auth.middleware.js';
+import { followLimiter } from '../../middleware/rateLimit.middleware.js';
+import {
+  follow,
+  followers,
+  following,
+  unfollow,
+} from './follow.controller.js';
 
 const router = express.Router();
 
-/**
- * @swagger
- * tags:
- *   name: Follows
- *   description: Follow management APIs
- */
+// All follow routes require authentication
+router.use(authenticate);
 
 /**
  * @swagger
- * /api/v1/follow:
+ * /api/v1/users/follow:
  *   post:
- *     summary: Create a new follow
- *     tags: [Follows]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               follower_id:
- *                 type: integer
- *               following_id:
- *                 type: integer
- *               created_by:
- *                 type: integer
- *     responses:
- *       201:
- *         description: Follow created successfully
- */
-router.post('/', followController.createFollow);
-
-/**
- * @swagger
- * /api/v1/follow:
- *   get:
- *     summary: Get all active follows
- *     tags: [Follows]
- *     responses:
- *       200:
- *         description: A list of follows
- */
-router.get('/', followController.getAllFollows);
-
-/**
- * @swagger
- * /api/v1/follow/bulk-delete:
- *   post:
- *     summary: Bulk soft delete follows
- *     tags: [Follows]
+ *     summary: Follow a user
+ *     tags: [Follow]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -60,99 +43,101 @@ router.get('/', followController.getAllFollows);
  *           schema:
  *             type: object
  *             required:
- *               - ids
+ *               - userId
  *             properties:
- *               ids:
- *                 type: array
- *                 items:
- *                   type: integer
- *               deletedRemarks:
- *                 type: string
- *               updated_by:
+ *               userId:
  *                 type: integer
+ *                 description: The ID of the user to follow
+ *                 example: 42
  *     responses:
- *       200:
- *         description: Follows deleted successfully (bulk soft delete)
+ *       201:
+ *         description: Followed successfully
+ *       400:
+ *         description: Invalid input or self-follow attempt
+ *       404:
+ *         description: Target user not found
+ *       409:
+ *         description: Already following this user
+ *       429:
+ *         description: Rate limit exceeded
  */
-router.post('/bulk-delete', followController.bulkDeleteFollows);
+router.post('/follow', followLimiter, follow);
 
 /**
  * @swagger
- * /api/v1/follow/{id}:
+ * /api/v1/users/followers:
  *   get:
- *     summary: Get a follow by ID
- *     tags: [Follows]
+ *     summary: Get my followers
+ *     tags: [Follow]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: id
- *         required: true
+ *       - in: query
+ *         name: page
  *         schema:
  *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 50
  *     responses:
  *       200:
- *         description: Follow data
- *       404:
- *         description: Follow not found
+ *         description: Paginated list of followers
  */
-router.get('/:id', followController.getFollowById);
+router.get('/followers', followers);
 
 /**
  * @swagger
- * /api/v1/follow/{id}:
- *   put:
- *     summary: Update a follow
- *     tags: [Follows]
+ * /api/v1/users/following:
+ *   get:
+ *     summary: Get users I follow
+ *     tags: [Follow]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: id
- *         required: true
+ *       - in: query
+ *         name: page
  *         schema:
  *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               updated_by:
- *                 type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 50
  *     responses:
  *       200:
- *         description: Follow updated successfully
- *       404:
- *         description: Follow not found
+ *         description: Paginated list of users being followed
  */
-router.put('/:id', followController.updateFollow);
+router.get('/following', following);
 
 /**
  * @swagger
- * /api/v1/follow/{id}:
+ * /api/v1/users/unfollow/{id}:
  *   delete:
- *     summary: Soft delete a follow
- *     tags: [Follows]
+ *     summary: Unfollow a user
+ *     tags: [Follow]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: integer
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               deletedRemarks:
- *                 type: string
- *               updated_by:
- *                 type: integer
+ *         description: The ID of the user to unfollow
  *     responses:
  *       200:
- *         description: Follow deleted successfully (soft delete)
- *       404:
- *         description: Follow not found
+ *         description: Unfollowed successfully (idempotent)
+ *       400:
+ *         description: Invalid user id
+ *       429:
+ *         description: Rate limit exceeded
  */
-router.delete('/:id', followController.deleteFollow);
+router.delete('/unfollow/:id', followLimiter, unfollow);
 
 export default router;

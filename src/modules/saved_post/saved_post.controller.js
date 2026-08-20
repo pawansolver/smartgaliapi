@@ -3,7 +3,12 @@ import * as savedPostService from './saved_post.service.js';
 
 export const createSavedPost = async (req, res, next) => {
   try {
-    const savedPost = await savedPostService.createSavedPost(req.body);
+    const savedPostData = {
+      ...req.body,
+      user_id: req.user.id,
+      created_by: req.user.id,
+    };
+    const savedPost = await savedPostService.createSavedPost(savedPostData);
     return successResponse(res, 201, 'Saved post created successfully', savedPost);
   } catch (error) {
     next(error);

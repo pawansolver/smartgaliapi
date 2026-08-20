@@ -1,9 +1,13 @@
-import express from 'express';
+﻿import express from 'express';
+import { randomUUID } from 'node:crypto';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import path from 'path';
 import routes from './routes/index.js';
+import registry from './monitoring/metrics.js';
+import { httpMetricsMiddleware } from './monitoring/httpMetrics.middleware.js';
+import healthRoutes from './monitoring/health.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
 import { setupSwagger } from './swagger.js';
 import env from './config/env.js';
@@ -45,6 +49,44 @@ app.use((req, res, next) => isMultipart(req) ? next() : express.json()(req, res,
 app.use((req, res, next) => isMultipart(req) ? next() : express.urlencoded({ extended: true })(req, res, next));
 app.use(morgan(env.isProduction ? 'combined' : 'dev')); // HTTP request logger
 
+// ── Phase 7: HTTP metrics middleware (correlation ID + Prometheus tracking) ──
+app.use(httpMetricsMiddleware);
+
+// ── Phase 7: Health endpoints (excluded from rate limiter and metrics) ────────
+// GET /health/live  — liveness probe
+// GET /health/ready — readiness probe (DB + Redis + Queue)
+app.use('/health', healthRoutes);
+
+// ── Phase 7: Prometheus /metrics endpoint ─────────────────────────────────────
+// Security safeguards:
+//  1. Metrics token check in production (METRICS_TOKEN env var)
+//  2. Only bind to localhost in production if running behind a proxy
+//  3. Excluded from general API rate limiter (mounted before /api/v1)
+app.get('/metrics', async (req, res) => {
+  // In production, require a bearer token to prevent public metric exposure.
+  if (env.isProduction) {
+    const metricsToken = process.env.METRICS_TOKEN;
+    if (metricsToken && metricsToken.length >= 16) {
+      const authHeader = req.headers['authorization'] || '';
+      const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+      if (provided !== metricsToken) {
+        return res.status(401).end('Unauthorized');
+      }
+    }
+    // If METRICS_TOKEN is not set in production, block the endpoint entirely
+    // to prevent accidental public exposure.
+    if (!metricsToken) {
+      return res.status(403).end('Forbidden: set METRICS_TOKEN to enable this endpoint');
+    }
+  }
+  try {
+    res.set('Content-Type', registry.contentType);
+    res.end(await registry.metrics());
+  } catch (err) {
+    res.status(500).end(String(err));
+  }
+});
+
 // Setup Swagger UI Documentation
 setupSwagger(app);
 
@@ -76,3 +118,4 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 export default app;
+

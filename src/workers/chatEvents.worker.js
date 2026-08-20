@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq';
+﻿import { Worker } from 'bullmq';
 import { logger } from '../utils/logger.js';
 import {
   queueConfig,
@@ -9,6 +9,12 @@ import * as outboxProcessor from '../modules/outbox/outbox.processor.js';
 import * as outboxPublisher from '../modules/outbox/outbox.publisher.js';
 import * as outboxService from '../modules/outbox/outbox.service.js';
 import { OUTBOX_STATUS } from '../modules/outbox/outbox.events.js';
+import {
+  bullmqJobsTotal,
+  bullmqJobFailures,
+  bullmqJobDuration,
+  bullmqJobsActive,
+} from '../monitoring/metrics.js';
 
 /** Mutable deps for unit tests (ESM exports are not mockable via mock.method). */
 export const workerDeps = {
@@ -22,7 +28,7 @@ let worker = null;
 let workerConnection = null;
 
 /**
- * Process one BullMQ job: load OutboxEvent → processEvent → Socket.IO.
+ * Process one BullMQ job: load OutboxEvent â†’ processEvent â†’ Socket.IO.
  * Throws on retriable failures so BullMQ exponential backoff applies.
  */
 export const handleChatEventJob = async (job) => {
@@ -33,6 +39,9 @@ export const handleChatEventJob = async (job) => {
     return { ok: false, reason: 'invalid_job' };
   }
 
+  const _queueName = queueConfig.chatQueueName;
+  const _jobStart = process.hrtime.bigint();
+  bullmqJobsActive.inc({ queue: _queueName });
   logger.info('WORKER', 'job_start', {
     jobId: job.id,
     outboxEventId,
@@ -42,7 +51,7 @@ export const handleChatEventJob = async (job) => {
 
   const event = await workerDeps.loadOutboxEvent(outboxEventId);
   if (!event) {
-    // Permanent — do not retry forever for missing rows
+    // Permanent â€” do not retry forever for missing rows
     logger.warn('WORKER', 'outbox_event_missing', { outboxEventId, jobId: job.id });
     return { ok: false, reason: 'not_found' };
   }
@@ -71,7 +80,7 @@ export const handleChatEventJob = async (job) => {
     return result;
   }
 
-  // Retriable — rethrow so BullMQ schedules the next attempt
+  // Retriable â€” rethrow so BullMQ schedules the next attempt
   throw new Error(result.error || `Outbox processing failed for event ${outboxEventId}`);
 };
 
@@ -97,6 +106,9 @@ export const startChatEventsWorker = async () => {
     const outboxEventId = job?.data?.outboxEventId;
     const permanent = job && job.attemptsMade >= (job.opts?.attempts || queueConfig.jobAttempts);
 
+    bullmqJobFailures.inc({ queue: queueConfig.chatQueueName });
+    bullmqJobsTotal.inc({ queue: queueConfig.chatQueueName, status: 'failed' });
+    bullmqJobsActive.dec({ queue: queueConfig.chatQueueName });
     logger.error('WORKER', 'job_failed', {
       jobId: job?.id,
       outboxEventId,
@@ -166,3 +178,4 @@ export default {
   stopChatEventsWorker,
   handleChatEventJob,
 };
+

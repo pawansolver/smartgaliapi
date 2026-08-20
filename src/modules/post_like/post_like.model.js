@@ -1,6 +1,5 @@
 import { DataTypes } from 'sequelize';
 import sequelize from '../../config/db.js';
-import { commonFields } from '../../utils/commonFields.js';
 import User from '../user/user.model.js';
 import Post from '../post/post.model.js';
 
@@ -26,7 +25,11 @@ const PostLike = sequelize.define('PostLike', {
       key: 'userId',
     }
   },
-  ...commonFields
+  created_at: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+    allowNull: true,
+  },
 }, {
   timestamps: false,
   tableName: 'post_likes',
