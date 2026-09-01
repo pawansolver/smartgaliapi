@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Environment variables — NEVER push to GitHub
+.env
+.env.*
+.env.local
+.env.*.local
+.env.production
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+coverage/
+uploads/
+
+# OS generated files
+.DS_Store
+Thumbs.db

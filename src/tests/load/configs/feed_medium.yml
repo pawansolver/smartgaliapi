@@ -1,0 +1,86 @@
+﻿config:
+  target: "http://localhost:5000"
+  phases:
+    - name: "Warmup"
+      duration: 15
+      arrivalRate: 30
+    - name: "Ramp up to Medium"
+      duration: 20
+      arrivalRate: 100
+      rampTo: 200
+    - name: "Sustained Production Load (~500 concurrent VUs)"
+      duration: 60
+      arrivalRate: 200
+      maxVusers: 500
+  payload:
+    - path: "../data/test_users.csv"
+      fields:
+        - "token"
+        - "userId"
+        - "userName"
+      order: "random"
+    - path: "../data/test_posts.csv"
+      fields:
+        - "postId"
+        - "authorId"
+      order: "random"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "Home Feed (70%)"
+    weight: 70
+    flow:
+      - get:
+          url: "/api/v1/feed/home?limit=20"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          capture:
+            - json: "$.data.nextCursor"
+              as: "nextCursor"
+      - think: 0.3
+      - get:
+          url: "/api/v1/feed/home?limit=20&cursor={{ nextCursor }}"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          ifTrue: "nextCursor"
+
+  - name: "Like/Unlike (15%)"
+    weight: 15
+    flow:
+      - post:
+          url: "/api/v1/post/{{ postId }}/like"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - think: 0.1
+      - delete:
+          url: "/api/v1/post/{{ postId }}/like"
+          headers:
+            Authorization: "Bearer {{ token }}"
+
+  - name: "Comment (10%)"
+    weight: 10
+    flow:
+      - post:
+          url: "/api/v1/post/{{ postId }}/comment"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            content: "Quick comment from {{ userName }}"
+      - get:
+          url: "/api/v1/post/{{ postId }}/comments?limit=10"
+          headers:
+            Authorization: "Bearer {{ token }}"
+
+  - name: "Batch Views (5%)"
+    weight: 5
+    flow:
+      - post:
+          url: "/api/v1/post/batch-views"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            views:
+              - postId: "{{ postId }}"
+                dwellMs: 2000

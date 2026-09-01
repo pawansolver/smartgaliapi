@@ -1,0 +1,24 @@
+﻿# Prometheus scrape config example for SmartGali backend
+# Phase 7 — Metrics + Monitoring
+#
+# Copy this file to your Prometheus configuration directory.
+# Replace <HOST> and <PORT> with your actual API server address.
+# In production, set METRICS_TOKEN env var and supply it here as a bearer token.
+#
+# Usage (development, no token):
+#   Copy as-is, replace <HOST>:<PORT>
+#
+# Usage (production, with METRICS_TOKEN=mysecrettoken):
+#   Uncomment the bearer_token line and set the token.
+
+scrape_configs:
+  - job_name: 'smartgali_api'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    static_configs:
+      - targets:
+          - '<HOST>:<PORT>'   # e.g. 'localhost:3000'
+    metrics_path: '/metrics'
+    # Uncomment and set token in production:
+    # authorization:
+    #   credentials: '<METRICS_TOKEN>'

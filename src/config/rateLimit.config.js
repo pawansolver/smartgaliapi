@@ -1,0 +1,184 @@
+import './env.js';
+/**
+ * Centralized rate-limit configuration (env-driven).
+ *
+ * Defaults preserve Phase 2 / existing middleware values.
+ * Redis key namespace (under REDIS_KEY_PREFIX when using cacheClient):
+ *   ratelimit:<policy>:...
+ */
+
+const toInt = (value, fallback) => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+};
+
+const toBool = (value, fallback = true) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+};
+
+/**
+ * Failure modes when Redis is unavailable:
+ *  - local_fallback: keep limiting via per-process memory (default)
+ *  - fail_open: skip limiting (NOT used for security-sensitive by default)
+ */
+const parseFailureMode = (value, fallback) => {
+  const normalized = String(value || fallback).trim().toLowerCase();
+  if (normalized === 'fail_open' || normalized === 'local_fallback') return normalized;
+  return fallback;
+};
+
+export const rateLimitConfig = {
+  get enabled() { return process.env.RATE_LIMIT_ENABLED !== 'false' && process.env.LOAD_TEST_MODE !== 'true'; },
+
+  /**
+   * Prefix passed to each RedisStore instance (appended after ioredis REDIS_KEY_PREFIX).
+   * Final key example: smartgali:ratelimit:message:<clientKey>
+   */
+  keyPrefix: process.env.RATE_LIMIT_KEY_PREFIX || 'ratelimit:',
+
+  /**
+   * Redis-down policy by limiter category.
+   * Security-sensitive always keeps a (stricter) local emergency limit.
+   */
+  redisFailureMode: {
+    security: parseFailureMode(
+      process.env.RATE_LIMIT_REDIS_FAILURE_MODE_SECURITY,
+      'local_fallback',
+    ),
+    general: parseFailureMode(
+      process.env.RATE_LIMIT_REDIS_FAILURE_MODE_GENERAL,
+      'local_fallback',
+    ),
+  },
+
+  general: {
+    windowMs: toInt(process.env.RATE_LIMIT_GENERAL_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_GENERAL_MAX, 300),
+  },
+  message: {
+    windowMs: toInt(process.env.RATE_LIMIT_MESSAGE_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_MESSAGE_MAX, 60),
+  },
+  upload: {
+    windowMs: toInt(process.env.RATE_LIMIT_UPLOAD_WINDOW_MS, 300_000),
+    max: toInt(process.env.RATE_LIMIT_UPLOAD_MAX, 20),
+  },
+  // Post creation — 10/min per user (spam protection)
+  postCreate: {
+    windowMs: toInt(process.env.RATE_LIMIT_POST_CREATE_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_POST_CREATE_MAX, 10),
+  },
+  // Feed fetch — 60/min per user
+  feedFetch: {
+    windowMs: toInt(process.env.RATE_LIMIT_FEED_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_FEED_MAX, 60),
+  },
+  // Like — 60/min per user
+  postLike: {
+    windowMs: toInt(process.env.RATE_LIMIT_POST_LIKE_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_POST_LIKE_MAX, 60),
+  },
+  // Comment — 20/min per user
+  postComment: {
+    windowMs: toInt(process.env.RATE_LIMIT_POST_COMMENT_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_POST_COMMENT_MAX, 20),
+  },
+  // Media upload — 20/min per user
+  mediaUpload: {
+    windowMs: toInt(process.env.RATE_LIMIT_MEDIA_UPLOAD_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_MEDIA_UPLOAD_MAX, 20),
+  },
+  // Follow — 30 follows per minute per user (anti-spam)
+  follow: {
+    windowMs: toInt(process.env.RATE_LIMIT_FOLLOW_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_FOLLOW_MAX, 30),
+  },
+  search: {
+    windowMs: toInt(process.env.RATE_LIMIT_SEARCH_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_SEARCH_MAX, 30),
+  },
+  reaction: {
+    windowMs: toInt(process.env.RATE_LIMIT_REACTION_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_REACTION_MAX, 120),
+  },
+  messageAction: {
+    windowMs: toInt(process.env.RATE_LIMIT_MESSAGE_ACTION_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_MESSAGE_ACTION_MAX, 120),
+  },
+  authSignup: {
+    windowMs: toInt(process.env.RATE_LIMIT_AUTH_SIGNUP_WINDOW_MS, 3_600_000),
+    max: toInt(process.env.RATE_LIMIT_AUTH_SIGNUP_MAX, 10),
+    /** Stricter per-process cap when Redis is down */
+    emergencyMax: toInt(process.env.RATE_LIMIT_AUTH_SIGNUP_EMERGENCY_MAX, 3),
+  },
+  authOtpSend: {
+    windowMs: toInt(process.env.RATE_LIMIT_AUTH_OTP_SEND_WINDOW_MS, 900_000),
+    max: toInt(process.env.RATE_LIMIT_AUTH_OTP_SEND_MAX, 5),
+    emergencyMax: toInt(process.env.RATE_LIMIT_AUTH_OTP_SEND_EMERGENCY_MAX, 2),
+  },
+  authOtpVerify: {
+    windowMs: toInt(process.env.RATE_LIMIT_AUTH_OTP_VERIFY_WINDOW_MS, 900_000),
+    max: toInt(process.env.RATE_LIMIT_AUTH_OTP_VERIFY_MAX, 10),
+    emergencyMax: toInt(process.env.RATE_LIMIT_AUTH_OTP_VERIFY_EMERGENCY_MAX, 3),
+  },
+  authSignin: {
+    windowMs: toInt(process.env.RATE_LIMIT_AUTH_SIGNIN_WINDOW_MS, 900_000),
+    max: toInt(process.env.RATE_LIMIT_AUTH_SIGNIN_MAX, 10),
+    emergencyMax: toInt(process.env.RATE_LIMIT_AUTH_SIGNIN_EMERGENCY_MAX, 3),
+  },
+  authReset: {
+    windowMs: toInt(process.env.RATE_LIMIT_AUTH_RESET_WINDOW_MS, 900_000),
+    max: toInt(process.env.RATE_LIMIT_AUTH_RESET_MAX, 10),
+    emergencyMax: toInt(process.env.RATE_LIMIT_AUTH_RESET_EMERGENCY_MAX, 3),
+  },
+  authRefresh: {
+    windowMs: toInt(process.env.RATE_LIMIT_AUTH_REFRESH_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_AUTH_REFRESH_MAX, 30),
+    emergencyMax: toInt(process.env.RATE_LIMIT_AUTH_REFRESH_EMERGENCY_MAX, 10),
+  },
+  // Share — 20/min per user
+  postShare: {
+    windowMs: toInt(process.env.RATE_LIMIT_POST_SHARE_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_POST_SHARE_MAX, 20),
+  },
+  // Report — 5/min per user (anti-abuse)
+  postReport: {
+    windowMs: toInt(process.env.RATE_LIMIT_POST_REPORT_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_POST_REPORT_MAX, 5),
+  },
+  // Batch views — 30/min per user
+  batchViews: {
+    windowMs: toInt(process.env.RATE_LIMIT_BATCH_VIEWS_WINDOW_MS, 60_000),
+    max: toInt(process.env.RATE_LIMIT_BATCH_VIEWS_MAX, 30),
+  },
+};
+/** Resolve effective max for a limiter given Redis availability. */
+export const resolveEffectiveMax = ({
+  category = 'general',
+  max,
+  emergencyMax,
+  redisAvailable,
+}) => {
+  if (redisAvailable) return max;
+
+  if (category === 'security') {
+    if (rateLimitConfig.redisFailureMode.security === 'fail_open') {
+      // Explicit opt-in only â€” not the default. Unlimited when Redis down.
+      return Number.MAX_SAFE_INTEGER;
+    }
+    const emergency = emergencyMax ?? Math.max(1, Math.floor(max / 3));
+    return Math.min(max, emergency);
+  }
+
+  // General / availability: keep configured max on local fallback (or fail-open)
+  if (rateLimitConfig.redisFailureMode.general === 'fail_open') {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return max;
+};
+
+export default rateLimitConfig;

@@ -1,0 +1,81 @@
+﻿config:
+  target: "http://localhost:5000"
+  phases:
+    - name: "Warmup"
+      duration: 15
+      arrivalRate: 50
+    - name: "Ramp up to Large"
+      duration: 25
+      arrivalRate: 200
+      rampTo: 400
+    - name: "Sustained Peak Load (~1,000 concurrent VUs)"
+      duration: 90
+      arrivalRate: 400
+      maxVusers: 1000
+  payload:
+    - path: "../data/test_users.csv"
+      fields:
+        - "token"
+        - "userId"
+        - "userName"
+      order: "random"
+    - path: "../data/test_posts.csv"
+      fields:
+        - "postId"
+        - "authorId"
+      order: "random"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "Home Feed (70%)"
+    weight: 70
+    flow:
+      - get:
+          url: "/api/v1/feed/home?limit=20"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          capture:
+            - json: "$.data.nextCursor"
+              as: "nextCursor"
+      - think: 0.2
+      - get:
+          url: "/api/v1/feed/home?limit=20&cursor={{ nextCursor }}"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          ifTrue: "nextCursor"
+
+  - name: "Like/Unlike (15%)"
+    weight: 15
+    flow:
+      - post:
+          url: "/api/v1/post/{{ postId }}/like"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - delete:
+          url: "/api/v1/post/{{ postId }}/like"
+          headers:
+            Authorization: "Bearer {{ token }}"
+
+  - name: "Comment (10%)"
+    weight: 10
+    flow:
+      - post:
+          url: "/api/v1/post/{{ postId }}/comment"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            content: "Peak rush comment {{ userName }}"
+
+  - name: "Batch Views (5%)"
+    weight: 5
+    flow:
+      - post:
+          url: "/api/v1/post/batch-views"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            views:
+              - postId: "{{ postId }}"
+                dwellMs: 1500

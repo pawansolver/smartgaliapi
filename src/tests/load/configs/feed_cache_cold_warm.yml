@@ -1,0 +1,29 @@
+﻿config:
+  target: "http://localhost:5000"
+  phases:
+    - name: "Phase 1: Cold Cache (1st request from each user)"
+      duration: 20
+      arrivalRate: 30
+    - name: "Phase 2: Warm Cache (Repeated hits from same users within 30s TTL)"
+      duration: 40
+      arrivalRate: 100
+  payload:
+    - path: "../data/test_users.csv"
+      fields:
+        - "token"
+        - "userId"
+        - "userName"
+      order: "sequence"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "Feed Cache Validation"
+    flow:
+      - get:
+          url: "/api/v1/feed/home?limit=20"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200

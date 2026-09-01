@@ -1,0 +1,67 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SmartGali Feed & Post System — Production Load Test Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+    h1 { color: #38bdf8; border-bottom: 2px solid #334155; padding-bottom: 0.5rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; background: #1e293b; border-radius: 8px; overflow: hidden; }
+    th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #334155; }
+    th { background: #0ea5e9; color: white; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.05em; }
+    tr:hover { background: #334155; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; background: #22c55e; color: black; }
+  </style>
+</head>
+<body>
+  <h1>⚡ SmartGali Feed & Post Load Testing Benchmark Report</h1>
+  <p>Target: <code>http://localhost:5000</code> | Date: 2026-08-25T06:48:56.487Z</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Load Profile</th>
+        <th>VUs Created</th>
+        <th>Total Requests</th>
+        <th>Avg Throughput</th>
+        <th>p50 Latency</th>
+        <th>p95 Latency</th>
+        <th>p99 Latency</th>
+        <th>Max Latency</th>
+        <th>Success 2xx</th>
+        <th>Error Rate</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+      <tr>
+        <td style="font-weight:bold">Baseline (~100 VUs)</td>
+        <td>819</td>
+        <td>904</td>
+        <td>15.1 req/s</td>
+        <td>3262 ms</td>
+        <td>7557 ms</td>
+        <td>7866 ms</td>
+        <td>7860 ms</td>
+        <td>117</td>
+        <td style="color:red">85.73%</td>
+      </tr>
+    
+
+      <tr>
+        <td style="font-weight:bold">Cold vs Warm Cache</td>
+        <td>4600</td>
+        <td>4600</td>
+        <td>76.7 req/s</td>
+        <td>1653 ms</td>
+        <td>5827 ms</td>
+        <td>6187 ms</td>
+        <td>7079 ms</td>
+        <td>67</td>
+        <td style="color:red">97.63%</td>
+      </tr>
+    
+    </tbody>
+  </table>
+</body>
+</html>
+  

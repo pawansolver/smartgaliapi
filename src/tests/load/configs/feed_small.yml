@@ -1,0 +1,90 @@
+﻿config:
+  target: "http://localhost:5000"
+  phases:
+    - name: "Warmup"
+      duration: 10
+      arrivalRate: 10
+    - name: "Sustained Baseline Load (~100 concurrent VUs)"
+      duration: 60
+      arrivalRate: 40
+      maxVusers: 100
+  payload:
+    - path: "../data/test_users.csv"
+      fields:
+        - "token"
+        - "userId"
+        - "userName"
+      order: "random"
+    - path: "../data/test_posts.csv"
+      fields:
+        - "postId"
+        - "authorId"
+      order: "random"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "1. Home Feed Flow (70%)"
+    weight: 70
+    flow:
+      - get:
+          url: "/api/v1/feed/home?limit=20"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          capture:
+            - json: "$.data.nextCursor"
+              as: "nextCursor"
+          expect:
+            - statusCode: 200
+      - think: 0.5
+      - get:
+          url: "/api/v1/feed/home?limit=20&cursor={{ nextCursor }}"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          ifTrue: "nextCursor"
+          expect:
+            - statusCode: 200
+
+  - name: "2. Post Like/Unlike Flow (15%)"
+    weight: 15
+    flow:
+      - post:
+          url: "/api/v1/post/{{ postId }}/like"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - think: 0.2
+      - delete:
+          url: "/api/v1/post/{{ postId }}/like"
+          headers:
+            Authorization: "Bearer {{ token }}"
+
+  - name: "3. Post Comment Flow (10%)"
+    weight: 10
+    flow:
+      - post:
+          url: "/api/v1/post/{{ postId }}/comment"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            content: "Community feedback message from {{ userName }}"
+          expect:
+            - statusCode: 201
+      - get:
+          url: "/api/v1/post/{{ postId }}/comments?limit=10"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+
+  - name: "4. Batch Viewport Views Flow (5%)"
+    weight: 5
+    flow:
+      - post:
+          url: "/api/v1/post/batch-views"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            views:
+              - postId: "{{ postId }}"
+                dwellMs: 2500

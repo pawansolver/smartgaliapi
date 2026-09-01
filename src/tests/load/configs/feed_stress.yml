@@ -1,0 +1,42 @@
+﻿config:
+  target: "http://localhost:5000"
+  phases:
+    - name: "Phase 1: Baseline"
+      duration: 15
+      arrivalRate: 50
+    - name: "Phase 2: Step up to 500"
+      duration: 25
+      arrivalRate: 200
+      rampTo: 400
+    - name: "Phase 3: Step up to 1500"
+      duration: 30
+      arrivalRate: 500
+      rampTo: 1000
+    - name: "Phase 4: Stress Peak Ramp towards 5000"
+      duration: 40
+      arrivalRate: 1000
+      rampTo: 2000
+      maxVusers: 5000
+  payload:
+    - path: "../data/test_users.csv"
+      fields:
+        - "token"
+        - "userId"
+        - "userName"
+      order: "random"
+    - path: "../data/test_posts.csv"
+      fields:
+        - "postId"
+        - "authorId"
+      order: "random"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "Home Feed Heavy Read"
+    flow:
+      - get:
+          url: "/api/v1/feed/home?limit=20"
+          headers:
+            Authorization: "Bearer {{ token }}"
