@@ -107,3 +107,49 @@ test('Membership Hardening: Sole active admin cannot leave without promoting ano
     /The sole active admin cannot leave/
   );
 });
+
+
+// ── Step 1 Negative Authorization Tests ───────────────────────────────────────
+
+test('Step 1 Authorization: Member cannot delete another member\'s poll', () => {
+  const comm = dummyCommunity({ created_by: 1 });
+  const member = { user_id: 5, role: 'member', status: 'active' };
+  const pollCreatedByOther = { id: 101, created_by: 6 };
+  assert.equal(policy.canDeletePoll(comm, member, { id: 5 }, pollCreatedByOther), false);
+});
+
+test('Step 1 Authorization: Poll creator can delete their own poll', () => {
+  const comm = dummyCommunity({ created_by: 1 });
+  const member = { user_id: 5, role: 'member', status: 'active' };
+  const ownPoll = { id: 101, created_by: 5 };
+  assert.equal(policy.canDeletePoll(comm, member, { id: 5 }, ownPoll), true);
+});
+
+test('Step 1 Authorization: Moderator can update community but cannot delete community', () => {
+  const comm = dummyCommunity({ created_by: 1 });
+  const mod = { user_id: 3, role: 'moderator', status: 'active' };
+  assert.equal(policy.canUpdateCommunity(comm, mod, { id: 3 }), true);
+  assert.equal(policy.canDeleteCommunity(comm, mod, { id: 3 }), false);
+});
+
+test('Step 1 Authorization: Community Admin / Owner can update and delete own community', () => {
+  const comm = dummyCommunity({ created_by: 1 });
+  const owner = { user_id: 1, role: 'admin', status: 'active' };
+  assert.equal(policy.canUpdateCommunity(comm, owner, { id: 1 }), true);
+  assert.equal(policy.canDeleteCommunity(comm, owner, { id: 1 }), true);
+});
+
+test('Step 1 Authorization: Non-owner admin cannot delete community without ownership', () => {
+  const comm = dummyCommunity({ created_by: 1 });
+  const nonOwnerAdmin = { user_id: 2, role: 'admin', status: 'active' };
+  assert.equal(policy.canDeleteCommunity(comm, nonOwnerAdmin, { id: 2 }), false);
+});
+
+test('Step 1 Authorization: Super Admin has global override for update, delete, and poll moderation', () => {
+  const comm = dummyCommunity({ created_by: 1 });
+  const superAdmin = { id: 99, role: 'admin', userRole: 'admin' };
+  const poll = { id: 101, created_by: 6 };
+  assert.equal(policy.canUpdateCommunity(comm, null, superAdmin), true);
+  assert.equal(policy.canDeleteCommunity(comm, null, superAdmin), true);
+  assert.equal(policy.canDeletePoll(comm, null, superAdmin, poll), true);
+});

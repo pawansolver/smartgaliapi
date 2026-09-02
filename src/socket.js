@@ -8,6 +8,8 @@ import CommunityMember from './modules/communityMember/communityMember.model.js'
 import SocietyProfile from './modules/society_profile/society_profile.model.js';
 import SocietyMember from './modules/society_member/society_member.model.js';
 import Community from './modules/community/community.model.js';
+import Event from './modules/event/event.model.js';
+import EventParticipant from './modules/event_participant/event_participant.model.js';
 import Message from './modules/message/message.model.js';
 import { markDelivered, markRead } from './modules/message_receipt/message_receipt.service.js';
 import { getPubClient, getSubClient, getIsRedisAvailable } from './config/redis.js';
@@ -137,12 +139,13 @@ export const initSocket = (httpServer) => {
         }
         const chat = await Chat.findOne({
           where: { id: chatId, is_deleted: false },
-          attributes: ['chat_type', 'community_id'],
+          attributes: ['chat_type', 'community_id', 'event_id'],
         });
         if (!chat) {
           return typeof acknowledge === 'function' && acknowledge({ ok: false, error: 'Chat not found' });
         }
-        if (chat.chat_type === 'community') {
+        const isGlobalAdmin = ['admin', 'super_admin'].includes(socket.user?.userRole ?? socket.user?.role);
+        if (chat.chat_type === 'community' && !isGlobalAdmin) {
           const [activeCommunity, activeCommunityMember] = await Promise.all([
             Community.findOne({
               where: {
@@ -150,7 +153,7 @@ export const initSocket = (httpServer) => {
                 status: 'active',
                 is_deleted: false,
               },
-              attributes: ['communityId'],
+              attributes: ['communityId', 'created_by'],
             }),
             CommunityMember.findOne({
               where: {
@@ -162,8 +165,43 @@ export const initSocket = (httpServer) => {
               attributes: ['communityMemberId'],
             }),
           ]);
-          if (!activeCommunity || !activeCommunityMember) {
+          const isOwner = activeCommunity && Number(activeCommunity.created_by) === Number(uid);
+          if (!activeCommunity || (!activeCommunityMember && !isOwner)) {
             return typeof acknowledge === 'function' && acknowledge({ ok: false, error: 'Active community membership required' });
+          }
+        } else if (chat.chat_type === 'event' && !isGlobalAdmin) {
+          const event = await Event.findOne({
+            where: { id: chat.event_id, is_deleted: false },
+            attributes: ['id', 'created_by', 'community_id', 'status'],
+          });
+          if (!event || event.status === 'cancelled') {
+            return typeof acknowledge === 'function' && acknowledge({ ok: false, error: 'Event is cancelled or inactive' });
+          }
+
+          const isEventCreator = Number(event.created_by) === Number(uid);
+          let isCommAdminOrMod = false;
+          if (event.community_id) {
+            const commMemb = await CommunityMember.findOne({
+              where: { community_id: event.community_id, user_id: uid, status: 'active', is_deleted: false },
+              attributes: ['role'],
+            });
+            isCommAdminOrMod = commMemb?.role === 'admin' || commMemb?.role === 'moderator';
+          }
+
+          if (!isEventCreator && !isCommAdminOrMod) {
+            const eventParticipant = await EventParticipant.findOne({
+              where: {
+                event_id: chat.event_id,
+                user_id: uid,
+                status: ['going', 'interested'],
+                is_deleted: false,
+                is_active: true,
+              },
+              attributes: ['id'],
+            });
+            if (!eventParticipant) {
+              return typeof acknowledge === 'function' && acknowledge({ ok: false, error: 'Active RSVP required for event chat' });
+            }
           }
         }
         await socket.join(`chat:${chatId}`);

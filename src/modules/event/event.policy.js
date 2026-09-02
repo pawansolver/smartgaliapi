@@ -9,6 +9,12 @@
 
 import { EVENT_STATUS, EVENT_VISIBILITY } from './event.model.js';
 
+export const isGlobalAdminUser = (user) => {
+  if (!user) return false;
+  const role = (user.role || user.userRole || '').toLowerCase().trim();
+  return role === 'admin' || role === 'super_admin' || role === 'superadmin';
+};
+
 export const isEventCreator = (event, userId) => {
   if (!event || !userId) return false;
   return Number(event.created_by) === Number(userId);
@@ -28,6 +34,9 @@ export const canReadEvent = (event, user, communityMembership = null, community 
   if (!event || event.is_deleted) return false;
 
   const userId = user?.id || user?.userId;
+
+  // Global Super Admin / Admin override
+  if (isGlobalAdminUser(user)) return true;
 
   // Creator can always read their own draft/event
   if (userId && isEventCreator(event, userId)) return true;
@@ -69,6 +78,8 @@ export const canCreateEvent = (user, community = null, communityMembership = nul
   const userId = user?.id || user?.userId;
   if (!userId) return false;
 
+  if (isGlobalAdminUser(user)) return true;
+
   // Community-scoped event creation
   if (community) {
     const role = getEffectiveCommunityRole(communityMembership, userId);
@@ -89,6 +100,8 @@ export const canUpdateEvent = (event, user, communityMembership = null) => {
   const userId = user?.id || user?.userId;
   if (!userId || !event || event.is_deleted) return false;
 
+  if (isGlobalAdminUser(user)) return true;
+
   // Creator can always update
   if (isEventCreator(event, userId)) return true;
 
@@ -105,6 +118,8 @@ export const canDeleteEvent = (event, user, communityMembership = null) => {
   const userId = user?.id || user?.userId;
   if (!userId || !event || event.is_deleted) return false;
 
+  if (isGlobalAdminUser(user)) return true;
+
   // Creator can delete
   if (isEventCreator(event, userId)) return true;
 
@@ -120,6 +135,8 @@ export const canDeleteEvent = (event, user, communityMembership = null) => {
 export const canCancelEvent = (event, user, communityMembership = null) => {
   const userId = user?.id || user?.userId;
   if (!userId || !event || event.is_deleted) return false;
+
+  if (isGlobalAdminUser(user)) return true;
 
   if (isEventCreator(event, userId)) return true;
 

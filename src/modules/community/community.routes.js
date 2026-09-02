@@ -31,7 +31,7 @@ router.post('/', authenticate, communityMutationLimiter, uploadImage('community'
   { name: 'cover_image', maxCount: 1 },
   { name: 'icon', maxCount: 1 },
 ]), validate(schemas.create), communityController.createCommunity);
-router.put('/:id', authenticate, communityMutationLimiter, requireCommunityRole(['admin']), uploadImage('community').fields([
+router.put('/:id', authenticate, communityMutationLimiter, requireCommunityRole(['admin', 'moderator']), uploadImage('community').fields([
   { name: 'cover_image', maxCount: 1 },
   { name: 'icon', maxCount: 1 },
 ]), validate(schemas.update), communityController.updateCommunity);

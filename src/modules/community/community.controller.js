@@ -179,6 +179,10 @@ export const deleteCommunity = async (req, res, next) => {
     const userId = req.user?.id;
     const { reason } = req.body;
 
+    if (!policy.canDeleteCommunity(req.community, req.communityMembership, req.user)) {
+      return errorResponse(res, 403, 'Forbidden: Only the community creator or platform administrator can delete this community');
+    }
+
     const deleted = await communityService.softDeleteCommunity(communityId, reason, userId);
     if (!deleted) return errorResponse(res, 404, 'Community not found');
 
@@ -494,8 +498,17 @@ export const createPoll = async (req, res, next) => {
 export const deletePoll = async (req, res, next) => {
   try {
     const { pollId } = req.params;
+    const communityId = req.params.id;
     const userId = req.user?.id;
-    const deleted = await pollService.deletePoll(req.params.id, pollId, userId);
+
+    const poll = await pollService.getPollById(communityId, pollId);
+    if (!poll) return errorResponse(res, 404, 'Poll not found in this community');
+
+    if (!policy.canDeletePoll(req.community, req.communityMembership, req.user, poll)) {
+      return errorResponse(res, 403, 'Forbidden: You do not have permission to delete this poll');
+    }
+
+    const deleted = await pollService.deletePoll(communityId, pollId, userId);
     if (!deleted) return errorResponse(res, 404, 'Poll not found in this community');
     return successResponse(res, 200, 'Poll deleted successfully', { success: true });
   } catch (error) {

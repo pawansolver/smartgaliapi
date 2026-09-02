@@ -3,6 +3,8 @@ import Message from '../modules/message/message.model.js';
 import Chat from '../modules/chat/chat.model.js';
 import CommunityMember from '../modules/communityMember/communityMember.model.js';
 import Community from '../modules/community/community.model.js';
+import Event from '../modules/event/event.model.js';
+import EventParticipant from '../modules/event_participant/event_participant.model.js';
 import { errorResponse } from '../utils/response.js';
 
 const authenticatedUserId = (req) => String(req.user?.id ?? '');
@@ -46,11 +48,13 @@ export const verifyChatMember = async (req, res, next) => {
       }],
     });
 
+    const isGlobalAdmin = ['admin', 'super_admin'].includes(req.user?.userRole ?? req.user?.role);
+
     if (!participant) {
-      // If user not in chat_participants yet, check if this is a community chat and user is an active member of that community
+      // If user not in chat_participants yet, dynamically check community or event membership
       const chat = await Chat.findOne({
         where: { id: chatId, is_deleted: false },
-        attributes: ['id', 'chat_type', 'community_id', 'created_by'],
+        attributes: ['id', 'chat_type', 'community_id', 'event_id', 'created_by'],
       });
       if (chat && chat.chat_type === 'community') {
         const [comm, communityMembership] = await Promise.all([
@@ -68,8 +72,8 @@ export const verifyChatMember = async (req, res, next) => {
             attributes: ['communityMemberId', 'role'],
           }),
         ]);
-        if (comm && (communityMembership || Number(comm.created_by) === Number(req.user.id))) {
-          const role = (communityMembership?.role === 'admin' || communityMembership?.role === 'moderator' || Number(comm.created_by) === Number(req.user.id)) ? 'admin' : 'member';
+        if (comm && (communityMembership || Number(comm.created_by) === Number(req.user.id) || isGlobalAdmin)) {
+          const role = (communityMembership?.role === 'admin' || communityMembership?.role === 'moderator' || Number(comm.created_by) === Number(req.user.id) || isGlobalAdmin) ? 'admin' : 'member';
           const [newPart] = await ChatParticipant.findOrCreate({
             where: { chat_id: chat.id, user_id: req.user.id },
             defaults: {
@@ -84,11 +88,51 @@ export const verifyChatMember = async (req, res, next) => {
           participant = newPart;
           participant.chat = chat;
         }
+      } else if (chat && chat.chat_type === 'event') {
+        const event = await Event.findOne({
+          where: { id: chat.event_id, is_deleted: false },
+          attributes: ['id', 'created_by', 'community_id', 'status'],
+        });
+        if (isGlobalAdmin || (event && event.status !== 'cancelled')) {
+          const isCreator = event && Number(event.created_by) === Number(req.user.id);
+          const eventPart = event ? await EventParticipant.findOne({
+            where: {
+              event_id: chat.event_id,
+              user_id: req.user.id,
+              status: ['going', 'interested'],
+              is_deleted: false,
+              is_active: true,
+            },
+            attributes: ['id', 'status'],
+          }) : null;
+          if (isCreator || isGlobalAdmin || eventPart) {
+            const role = (isCreator || isGlobalAdmin) ? 'admin' : 'member';
+            const [newPart] = await ChatParticipant.findOrCreate({
+              where: { chat_id: chat.id, user_id: req.user.id },
+              defaults: {
+                role,
+                created_by: chat.created_by || req.user.id,
+                is_active: true,
+                is_deleted: false,
+                joined_at: new Date(),
+              },
+            });
+            await newPart.update({ role, is_active: true, is_deleted: false, updatedAt: new Date() });
+            participant = newPart;
+            participant.chat = chat;
+          }
+        }
       }
     }
 
     if (!participant) return errorResponse(res, 403, 'You are not a member of this chat');
-    const chat = participant.chat;
+
+    // Reload full chat object if missing attributes
+    const chat = participant.chat || await Chat.findOne({
+      where: { id: chatId, is_deleted: false },
+      attributes: ['id', 'chat_type', 'community_id', 'event_id', 'created_by'],
+    });
+
     if (chat?.chat_type === 'community') {
       const [community, communityMembership] = await Promise.all([
         Community.findOne({
@@ -106,11 +150,36 @@ export const verifyChatMember = async (req, res, next) => {
         }),
       ]);
       const isOwner = community && Number(community.created_by) === Number(req.user.id);
-      if (!community || (!communityMembership && !isOwner)) {
+      if (!isGlobalAdmin && (!community || (!communityMembership && !isOwner))) {
         return errorResponse(res, 403, 'Active community membership is required for this chat');
       }
       req.communityMembership = communityMembership || { role: 'admin', status: 'active' };
+    } else if (chat?.chat_type === 'event' && !isGlobalAdmin) {
+      const event = await Event.findOne({
+        where: { id: chat.event_id, is_deleted: false },
+        attributes: ['id', 'created_by', 'community_id', 'status'],
+      });
+      if (!event || event.status === 'cancelled') {
+        return errorResponse(res, 403, 'Event is cancelled or no longer active');
+      }
+      const isCreator = Number(event.created_by) === Number(req.user.id);
+      if (!isCreator) {
+        const eventParticipant = await EventParticipant.findOne({
+          where: {
+            event_id: chat.event_id,
+            user_id: req.user.id,
+            status: ['going', 'interested'],
+            is_deleted: false,
+            is_active: true,
+          },
+          attributes: ['id', 'status'],
+        });
+        if (!eventParticipant) {
+          return errorResponse(res, 403, 'Active RSVP is required to participate in this event chat');
+        }
+      }
     }
+
     req.chatParticipant = participant;
     req.authorizedChatId = chatId;
     return next();

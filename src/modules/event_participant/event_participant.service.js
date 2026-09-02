@@ -13,6 +13,9 @@ import Event, { EVENT_STATUS } from '../event/event.model.js';
 import User from '../user/user.model.js';
 import CommunityMember from '../communityMember/communityMember.model.js';
 import Community from '../community/community.model.js';
+import Chat from '../chat/chat.model.js';
+import ChatParticipant from '../chat_participant/chat_participant.model.js';
+import { revokeUserFromChatRoom } from '../../socket.js';
 import { canRsvpEvent } from '../event/event.policy.js';
 import { createEvent as createOutboxEvent } from '../outbox/outbox.service.js';
 import { OUTBOX_EVENT_TYPES, OUTBOX_AGGREGATE_TYPES } from '../outbox/outbox.events.js';
@@ -237,6 +240,24 @@ export const cancelEventRsvp = async (eventId, userId) => {
       updated_by: userId,
     }, { transaction: t });
 
+    // Soft delete chat participant if event chat exists
+    const eventChat = await Chat.findOne({
+      where: { event_id: eventId, is_deleted: false },
+      attributes: ['id'],
+      transaction: t,
+    });
+    if (eventChat) {
+      await ChatParticipant.update({
+        is_deleted: true,
+        is_active: false,
+        updatedAt: new Date(),
+        updated_by: userId,
+      }, {
+        where: { chat_id: eventChat.id, user_id: userId },
+        transaction: t,
+      });
+    }
+
     await createOutboxEvent({
       event_type: OUTBOX_EVENT_TYPES.EVENT_RSVP_CHANGED,
       aggregate_type: OUTBOX_AGGREGATE_TYPES.EVENT,
@@ -255,6 +276,11 @@ export const cancelEventRsvp = async (eventId, userId) => {
 
     t.afterCommit(async () => {
       await invalidateEventCaches(eventId, event.community_id);
+      if (eventChat) {
+        try {
+          await revokeUserFromChatRoom(eventChat.id, userId);
+        } catch (_) {}
+      }
     });
 
     return {

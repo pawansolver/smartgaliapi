@@ -9,7 +9,7 @@ export const getAllReports = async () => {
   return await Report.findAll({
     where: { is_deleted: false },
     include: [
-      { model: User, as: 'reporter', attributes: ['userId', 'userName', 'profile_image'] }
+      { model: User, as: 'reporter', attributes: ['userId', 'userName', 'email'] }
     ]
   });
 };
@@ -18,7 +18,7 @@ export const getReportById = async (id) => {
   return await Report.findOne({
     where: { id, is_deleted: false },
     include: [
-      { model: User, as: 'reporter', attributes: ['userId', 'userName', 'profile_image'] }
+      { model: User, as: 'reporter', attributes: ['userId', 'userName', 'email'] }
     ]
   });
 };

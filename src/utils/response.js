@@ -1,4 +1,4 @@
-import { normalizeMediaPayload } from './mediaUrl.js';
+﻿import { normalizeMediaPayload } from './mediaUrl.js';
 
 /**
  * Standardize API responses
@@ -6,12 +6,14 @@ import { normalizeMediaPayload } from './mediaUrl.js';
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Response message
  * @param {Object|null} data - Response payload
+ * @param {Object|null} pagination - Pagination metadata (total, page, limit, totalPages)
  */
-export const successResponse = (res, statusCode = 200, message = 'Success', data = null) => {
+export const successResponse = (res, statusCode = 200, message = 'Success', data = null, pagination = null) => {
   return res.status(statusCode).json({
     success: true,
     message,
     data: normalizeMediaPayload(data),
+    ...(pagination ? { pagination } : {}),
   });
 };
 

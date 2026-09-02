@@ -1,4 +1,4 @@
-import { DataTypes } from 'sequelize';
+﻿import { DataTypes } from 'sequelize';
 import sequelize from '../../config/db.js';
 import { commonFields } from '../../utils/commonFields.js';
 import User from '../user/user.model.js';
@@ -48,6 +48,5 @@ const SocietyProfile = sequelize.define('SocietyProfile', {
 });
 
 SocietyProfile.belongsTo(User, { foreignKey: 'user_id', as: 'admin_user' });
-SocietyProfile.belongsTo(User, { foreignKey: 'user_id', as: 'owner' });
 
 export default SocietyProfile;

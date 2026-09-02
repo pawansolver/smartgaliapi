@@ -19,7 +19,7 @@ export const createEvent = async (req, res, next) => {
       data.cover_image = getImageUrl(req, 'event', req.file.filename);
     }
     const creatorId = req.user?.id || req.user?.userId;
-    const event = await eventService.createEvent(data, creatorId);
+    const event = await eventService.createEvent(data, creatorId, req.user);
     return successResponse(res, 201, 'Event created successfully', event);
   } catch (error) {
     if (error.statusCode) {

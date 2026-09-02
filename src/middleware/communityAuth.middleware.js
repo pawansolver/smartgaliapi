@@ -58,7 +58,7 @@ export const requireCommunityMember = async (req, res, next) => {
     const { community, membership, error } = await loadAccessContext(req);
     if (error) return errorResponse(res, ...error);
 
-    if (policy.isOwner(community, userId)) {
+    if (policy.isOwner(community, userId) || req.user?.role === 'admin') {
       req.community = community;
       req.communityMembership = membership || { role: 'admin', status: 'active', isOwner: true };
       return next();
@@ -92,7 +92,7 @@ export const requireCommunityRole = (allowedRoles = ['admin', 'moderator']) => {
       if (error) return errorResponse(res, ...error);
 
       // Creator/owner has full super-admin access
-      if (policy.isOwner(community, userId)) {
+      if (policy.isOwner(community, userId) || req.user?.role === 'admin') {
         req.community = community;
         req.communityMembership = membership || { role: 'admin', status: 'active', isOwner: true };
         return next();

@@ -32,13 +32,14 @@ export const canReadCommunity = (community, membership, user) => {
 };
 
 export const canUpdateCommunity = (community, membership, user) => {
+  if (user?.role === 'admin' || user?.userRole === 'admin') return true;
   const role = getEffectiveRole(community, membership, user?.id);
-  return role === 'owner' || role === 'admin';
+  return role === 'owner' || role === 'admin' || role === 'moderator';
 };
 
 export const canDeleteCommunity = (community, membership, user) => {
-  const role = getEffectiveRole(community, membership, user?.id);
-  return role === 'owner';
+  if (user?.role === 'admin' || user?.userRole === 'admin') return true;
+  return isOwner(community, user?.id);
 };
 
 export const canTransferOwnership = (community, membership, user, newOwnerId) => {
@@ -47,16 +48,19 @@ export const canTransferOwnership = (community, membership, user, newOwnerId) =>
 };
 
 export const canManageMembers = (community, membership, user) => {
+  if (user?.role === 'admin') return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return role === 'owner' || role === 'admin' || role === 'moderator';
 };
 
 export const canApproveJoinRequest = (community, membership, user) => {
+  if (user?.role === 'admin') return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return role === 'owner' || role === 'admin' || role === 'moderator';
 };
 
 export const canRejectJoinRequest = (community, membership, user) => {
+  if (user?.role === 'admin') return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return role === 'owner' || role === 'admin' || role === 'moderator';
 };
@@ -155,8 +159,9 @@ export const canCreatePoll = (community, membership, user) => {
 };
 
 export const canDeletePoll = (community, membership, user, poll) => {
+  if (user?.role === 'admin' || user?.userRole === 'admin') return true;
   const role = getEffectiveRole(community, membership, user?.id);
-  if (role === 'owner' || role === 'admin') return true;
+  if (role === 'owner' || role === 'admin' || role === 'moderator') return true;
   if (poll && Number(poll.created_by) === Number(user?.id)) return true;
   return false;
 };

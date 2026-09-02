@@ -233,3 +233,10 @@ export const deletePoll = async (communityId, pollId, userId) => {
     throw error;
   }
 };
+
+
+export const getPollById = async (communityId, pollId) => {
+  return await CommunityPoll.findOne({
+    where: { id: pollId, community_id: communityId, is_deleted: false },
+  });
+};

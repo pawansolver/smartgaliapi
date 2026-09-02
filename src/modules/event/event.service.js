@@ -13,6 +13,9 @@ import EventCategory from '../event_category/event_category.model.js';
 import EventParticipant, { RSVP_STATUS } from '../event_participant/event_participant.model.js';
 import User from '../user/user.model.js';
 import Community from '../community/community.model.js';
+import Chat from '../chat/chat.model.js';
+import ChatParticipant from '../chat_participant/chat_participant.model.js';
+import { getIO } from '../../socket.js';
 import CommunityMember from '../communityMember/communityMember.model.js';
 import { canReadEvent, canUpdateEvent, canDeleteEvent, canCancelEvent } from './event.policy.js';
 import { createEvent as createOutboxEvent } from '../outbox/outbox.service.js';
@@ -28,7 +31,43 @@ import {
 } from './event.cache.js';
 import { eventCreateTotal, eventViewTotal, eventCancelTotal, eventNearbySearchTotal } from '../../monitoring/metrics.js';
 
-export const createEvent = async (eventData, creatorId) => {
+export const createEvent = async (eventData, creatorId, user = null) => {
+  if (eventData.community_id) {
+    const community = await Community.findOne({
+      where: { communityId: eventData.community_id, is_deleted: false, status: 'active' },
+    });
+    if (!community) {
+      const error = new Error('Community not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const isGlobalAdmin = (user?.role === 'admin' || user?.userRole === 'admin' || user?.role === 'super_admin' || user?.userRole === 'super_admin');
+    const isOwner = Number(community.created_by) === Number(creatorId);
+
+    if (!isGlobalAdmin && !isOwner) {
+      const membership = await CommunityMember.findOne({
+        where: { community_id: eventData.community_id, user_id: creatorId, is_deleted: false },
+      });
+
+      if (!membership || membership.status !== 'active') {
+        if (membership?.status === 'banned') {
+          const error = new Error('Forbidden: You are banned from this community');
+          error.statusCode = 403;
+          throw error;
+        }
+        if (membership?.status === 'pending') {
+          const error = new Error('Forbidden: Your community membership is pending approval');
+          error.statusCode = 403;
+          throw error;
+        }
+        const error = new Error('Forbidden: Active community membership required to create community events');
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+  }
+
   return await sequelize.transaction(async (t) => {
     const event = await Event.create({
       ...eventData,
@@ -341,6 +380,20 @@ export const updateEvent = async (id, updateData, user) => {
   });
 
   await invalidateEventCaches(id, event.community_id);
+
+  const eventChat = await Chat.findOne({ where: { event_id: id, is_deleted: false } });
+  if (eventChat) {
+    await ChatParticipant.update({
+      is_deleted: true,
+      is_active: false,
+      updatedAt: new Date(),
+      updated_by: user.id,
+    }, { where: { chat_id: eventChat.id } });
+    try {
+      getIO()?.to(`chat:${eventChat.id}`).emit('chat:access-revoked', { chatId: Number(eventChat.id), reason: 'event_deleted' });
+    } catch (_) {}
+  }
+
   return updated;
 };
 
@@ -379,6 +432,19 @@ export const cancelEvent = async (id, reason, user) => {
   try {
     eventCancelTotal.inc();
   } catch (_) {}
+
+  const eventChat = await Chat.findOne({ where: { event_id: id, is_deleted: false } });
+  if (eventChat) {
+    await ChatParticipant.update({
+      is_deleted: true,
+      is_active: false,
+      updatedAt: new Date(),
+      updated_by: user.id,
+    }, { where: { chat_id: eventChat.id } });
+    try {
+      getIO()?.to(`chat:${eventChat.id}`).emit('chat:access-revoked', { chatId: Number(eventChat.id), reason: 'event_cancelled' });
+    } catch (_) {}
+  }
 
   return updated;
 };

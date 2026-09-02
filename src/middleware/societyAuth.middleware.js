@@ -49,7 +49,7 @@ export const requireSocietyMember = async (req, res, next) => {
     const { societyId, society, membership, isOwner, effectiveRole, error } = await loadSocietyAccessContext(req);
     if (error) return errorResponse(res, ...error);
 
-    if (isOwner) {
+    if (isOwner || req.user?.role === 'admin') {
       req.society = society;
       req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true };
       req.societyContext = { societyId, society, membership: req.societyMembership, role: 'owner', isOwner: true };
@@ -89,7 +89,7 @@ export const requireSocietyRole = (allowedRoles = ['admin', 'committee']) => {
       const { societyId, society, membership, isOwner, effectiveRole, error } = await loadSocietyAccessContext(req);
       if (error) return errorResponse(res, ...error);
 
-      if (isOwner) {
+      if (isOwner || req.user?.role === 'admin') {
         req.society = society;
         req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true };
         req.societyContext = { societyId, society, membership: req.societyMembership, role: 'owner', isOwner: true };

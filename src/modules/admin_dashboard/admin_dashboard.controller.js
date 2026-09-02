@@ -9,7 +9,7 @@ export const getDashboardStats = async (req, res) => {
     const totalUsers = await User.count();
     const activeCommunities = await Community.count({ where: { status: 'active' } });
     const totalBusinesses = await BusinessProfile.count();
-    const pendingVerifications = await BusinessProfile.count({ where: { is_verified: false } });
+    const pendingVerifications = await User.count({ where: { is_verified: false } }).catch(() => 0);
     const totalPosts = await Post.count();
 
     return successResponse(res, 200, 'Dashboard stats fetched successfully', {
@@ -37,7 +37,7 @@ export const getRecentActivities = async (req, res) => {
     const recentBusinesses = await BusinessProfile.findAll({
       order: [['created_at', 'DESC']],
       limit: 5,
-      attributes: ['id', 'business_name', 'created_at', 'is_verified']
+      attributes: ['id', 'businessName', 'created_at']
     });
 
     // We can format this into a unified activity feed
@@ -52,7 +52,7 @@ export const getRecentActivities = async (req, res) => {
       ...recentBusinesses.map(b => ({
         id: `biz_${b.id}`,
         title: 'New Business Registered',
-        description: `${b.business_name} created a business profile`,
+        description: `${b.businessName || 'New Business'} created a business profile`,
         date: b.created_at,
         type: 'business'
       }))
