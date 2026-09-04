@@ -1,11 +1,23 @@
 /**
- * Community Authorization & RBAC Policy Layer - Phase 2
+ * Community Authorization & RBAC Policy Layer - Phase 2 & Super Admin Hardening
  * ─────────────────────────────────────────────────────────────────────────────
  * Centralized authorization rules for all Community operations.
  * Enforces strict principle of least privilege, IDOR protection,
- * and prevents privilege escalation (e.g. self-promotion, admin-to-owner escalation).
+ * prevents privilege escalation, and grants global authority to real platform super_admins.
  * ─────────────────────────────────────────────────────────────────────────────
  */
+
+export const isSuperAdminUser = (user) => {
+  if (!user) return false;
+  const role = String(user.userRole || user.role || '').toLowerCase().trim();
+  return role === 'super_admin' || role === 'superadmin';
+};
+
+export const isGlobalAdminUser = (user) => {
+  if (!user) return false;
+  const role = String(user.userRole || user.role || '').toLowerCase().trim();
+  return role === 'super_admin' || role === 'superadmin' || role === 'admin';
+};
 
 export const isOwner = (community, userId) => {
   if (!community || !userId) return false;
@@ -26,51 +38,57 @@ export const getEffectiveRole = (community, membership, userId) => {
 
 export const canReadCommunity = (community, membership, user) => {
   if (!community || community.is_deleted || (community.status && community.status !== 'active')) return false;
+  if (isGlobalAdminUser(user)) return true;
   if (!community.is_private) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return role === 'owner' || role === 'admin' || role === 'moderator' || role === 'member';
 };
 
 export const canUpdateCommunity = (community, membership, user) => {
-  if (user?.role === 'admin' || user?.userRole === 'admin') return true;
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return role === 'owner' || role === 'admin' || role === 'moderator';
 };
 
 export const canDeleteCommunity = (community, membership, user) => {
-  if (user?.role === 'admin' || user?.userRole === 'admin') return true;
+  if (isGlobalAdminUser(user)) return true;
   return isOwner(community, user?.id);
 };
 
 export const canTransferOwnership = (community, membership, user, newOwnerId) => {
   if (!newOwnerId || Number(user?.id) === Number(newOwnerId)) return false;
+  if (isGlobalAdminUser(user)) return true;
   return isOwner(community, user?.id);
 };
 
 export const canManageMembers = (community, membership, user) => {
-  if (user?.role === 'admin') return true;
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return role === 'owner' || role === 'admin' || role === 'moderator';
 };
 
 export const canApproveJoinRequest = (community, membership, user) => {
-  if (user?.role === 'admin') return true;
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return role === 'owner' || role === 'admin' || role === 'moderator';
 };
 
 export const canRejectJoinRequest = (community, membership, user) => {
-  if (user?.role === 'admin') return true;
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return role === 'owner' || role === 'admin' || role === 'moderator';
 };
 
 export const canChangeMemberRole = (community, membership, user, targetMember, newRole) => {
+  if (!['admin', 'moderator', 'member'].includes(newRole)) return false;
+  const targetUserId = targetMember?.user_id || targetMember?.userId;
+  if (isGlobalAdminUser(user)) {
+    if (Number(user?.id) === Number(targetUserId)) return false;
+    return true;
+  }
+
   const actorRole = getEffectiveRole(community, membership, user?.id);
   if (!['owner', 'admin'].includes(actorRole)) return false;
-  if (!['admin', 'moderator', 'member'].includes(newRole)) return false;
-
-  const targetUserId = targetMember?.user_id || targetMember?.userId;
   if (isOwner(community, targetUserId)) return false;
   if (Number(user?.id) === Number(targetUserId)) return false;
   if (actorRole === 'admin' && targetMember?.role === 'admin' && !isOwner(community, user?.id)) {
@@ -80,10 +98,13 @@ export const canChangeMemberRole = (community, membership, user, targetMember, n
 };
 
 export const canRemoveMember = (community, membership, user, targetMember) => {
+  const targetUserId = targetMember?.user_id || targetMember?.userId;
+  if (isGlobalAdminUser(user)) {
+    return true;
+  }
+
   const actorRole = getEffectiveRole(community, membership, user?.id);
   if (!['owner', 'admin', 'moderator'].includes(actorRole)) return false;
-
-  const targetUserId = targetMember?.user_id || targetMember?.userId;
   if (isOwner(community, targetUserId)) return false;
   if (actorRole === 'moderator' && (targetMember?.role === 'admin' || targetMember?.role === 'moderator')) {
     return false;
@@ -92,36 +113,45 @@ export const canRemoveMember = (community, membership, user, targetMember) => {
 };
 
 export const canBanMember = (community, membership, user, targetMember) => {
+  const targetUserId = targetMember?.user_id || targetMember?.userId;
+  if (isGlobalAdminUser(user)) {
+    if (Number(user?.id) === Number(targetUserId)) return false;
+    return true;
+  }
+
   const actorRole = getEffectiveRole(community, membership, user?.id);
   if (!['owner', 'admin'].includes(actorRole)) return false;
-
-  const targetUserId = targetMember?.user_id || targetMember?.userId;
   if (isOwner(community, targetUserId)) return false;
   if (Number(user?.id) === Number(targetUserId)) return false;
   return true;
 };
 
 export const canUnbanMember = (community, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const actorRole = getEffectiveRole(community, membership, user?.id);
   return actorRole === 'owner' || actorRole === 'admin';
 };
 
 export const canSendInvitations = (community, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return role === 'owner' || role === 'admin' || role === 'moderator';
 };
 
 export const canCreateCommunityPost = (community, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return ['owner', 'admin', 'moderator', 'member'].includes(role);
 };
 
 export const canCreateAnnouncement = (community, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return ['owner', 'admin', 'moderator'].includes(role);
 };
 
 export const canDeleteAnnouncement = (community, membership, user, announcement) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   if (role === 'owner' || role === 'admin') return true;
   if (role === 'moderator' && announcement && Number(announcement.created_by) === Number(user?.id)) return true;
@@ -129,11 +159,13 @@ export const canDeleteAnnouncement = (community, membership, user, announcement)
 };
 
 export const canUploadDocument = (community, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return ['owner', 'admin', 'moderator'].includes(role);
 };
 
 export const canDeleteDocument = (community, membership, user, doc) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   if (role === 'owner' || role === 'admin') return true;
   if (role === 'moderator' && doc && Number(doc.uploaded_by || doc.created_by) === Number(user?.id)) return true;
@@ -141,11 +173,13 @@ export const canDeleteDocument = (community, membership, user, doc) => {
 };
 
 export const canUploadMedia = (community, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return ['owner', 'admin', 'moderator', 'member'].includes(role);
 };
 
 export const canDeleteMedia = (community, membership, user, media) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   if (role === 'owner' || role === 'admin') return true;
   if (role === 'moderator') return true;
@@ -154,12 +188,13 @@ export const canDeleteMedia = (community, membership, user, media) => {
 };
 
 export const canCreatePoll = (community, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return ['owner', 'admin', 'moderator'].includes(role);
 };
 
 export const canDeletePoll = (community, membership, user, poll) => {
-  if (user?.role === 'admin' || user?.userRole === 'admin') return true;
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   if (role === 'owner' || role === 'admin' || role === 'moderator') return true;
   if (poll && Number(poll.created_by) === Number(user?.id)) return true;
@@ -168,6 +203,7 @@ export const canDeletePoll = (community, membership, user, poll) => {
 
 export const canVotePoll = (community, membership, user, poll) => {
   if (poll?.expires_at && new Date(poll.expires_at) < new Date()) return false;
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(community, membership, user?.id);
   return ['owner', 'admin', 'moderator', 'member'].includes(role);
 };

@@ -96,7 +96,8 @@ export const getJoinRequests = async (communityId, { page = 1, limit = 20 } = {}
   };
 };
 
-export const approveJoinRequest = async (communityId, requestId, actorUserId) => {
+export const approveJoinRequest = async (communityId, requestId, actorUser) => {
+  const actorUserId = typeof actorUser === 'object' ? actorUser?.id : actorUser;
   if (actorUserId === undefined) {
     actorUserId = requestId;
     requestId = communityId;
@@ -189,7 +190,8 @@ export const approveJoinRequest = async (communityId, requestId, actorUserId) =>
   }
 };
 
-export const rejectJoinRequest = async (communityId, requestId, actorUserId) => {
+export const rejectJoinRequest = async (communityId, requestId, actorUser) => {
+  const actorUserId = typeof actorUser === 'object' ? actorUser?.id : actorUser;
   if (actorUserId === undefined) {
     actorUserId = requestId;
     requestId = communityId;

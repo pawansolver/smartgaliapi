@@ -4,6 +4,47 @@ import { errorResponse } from '../utils/response.js';
 import User from '../modules/user/user.model.js';
 
 /**
+ * Safely check if a user possesses exclusive Super Administrator authority
+ * (e.g. 'super_admin', 'superadmin').
+ * Strictly excludes standard operational 'admin' (R002) and community/resident roles.
+ */
+export const isSuperAdminUser = (user) => {
+  if (!user) return false;
+  const role = String(user.userRole || user.role || '').toLowerCase().trim();
+  return role === 'super_admin' || role === 'superadmin';
+};
+
+/**
+ * Safely check if a user possesses global platform-level administrator authority
+ * (e.g. 'super_admin', 'superadmin', 'admin') for legitimate shared operational duties.
+ */
+export const isGlobalAdminUser = (user) => {
+  if (!user) return false;
+  const role = String(user.userRole || user.role || '').toLowerCase().trim();
+  return role === 'super_admin' || role === 'superadmin' || role === 'admin';
+};
+
+/**
+ * Middleware requiring exclusive Super Administrator privileges (PRD R001 System Administration).
+ */
+export const requireSuperAdmin = (req, res, next) => {
+  if (!req.user || !isSuperAdminUser(req.user)) {
+    return errorResponse(res, 403, 'Super Administrator privileges required.');
+  }
+  return next();
+};
+
+/**
+ * Middleware requiring global platform admin or super admin privileges (Shared operational duties)
+ */
+export const requireGlobalAdmin = (req, res, next) => {
+  if (!req.user || !isGlobalAdminUser(req.user)) {
+    return errorResponse(res, 403, 'Administrator privileges required.');
+  }
+  return next();
+};
+
+/**
  * Middleware to protect routes using JWT
  */
 export const createAuthenticate = ({

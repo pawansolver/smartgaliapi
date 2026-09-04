@@ -23,11 +23,17 @@ export const loadAccessContext = async (req) => {
   return { community, membership };
 };
 
-/** Public communities allow anonymous reads; private communities require active membership or ownership. */
+/** Public communities allow anonymous reads; private communities require active membership, ownership, or global admin role. */
 export const requireCommunityReadAccess = async (req, res, next) => {
   try {
     const { community, membership, error } = await loadAccessContext(req);
     if (error) return errorResponse(res, ...error);
+
+    if (policy.isGlobalAdminUser(req.user)) {
+      req.community = community;
+      req.communityMembership = membership || { role: 'admin', status: 'active', isSuperAdmin: true };
+      return next();
+    }
 
     if (!policy.canReadCommunity(community, membership, req.user)) {
       if (membership?.status === 'banned') {
@@ -47,7 +53,7 @@ export const requireCommunityReadAccess = async (req, res, next) => {
   }
 };
 
-/** Require user to be an active member or creator/owner */
+/** Require user to be an active member, creator/owner, or global super admin */
 export const requireCommunityMember = async (req, res, next) => {
   try {
     const userId = req.user?.id;
@@ -58,9 +64,9 @@ export const requireCommunityMember = async (req, res, next) => {
     const { community, membership, error } = await loadAccessContext(req);
     if (error) return errorResponse(res, ...error);
 
-    if (policy.isOwner(community, userId) || req.user?.role === 'admin') {
+    if (policy.isGlobalAdminUser(req.user) || policy.isOwner(community, userId)) {
       req.community = community;
-      req.communityMembership = membership || { role: 'admin', status: 'active', isOwner: true };
+      req.communityMembership = membership || { role: 'admin', status: 'active', isOwner: policy.isOwner(community, userId), isSuperAdmin: policy.isGlobalAdminUser(req.user) };
       return next();
     }
 
@@ -79,7 +85,7 @@ export const requireCommunityMember = async (req, res, next) => {
   }
 };
 
-/** Require specific community role (e.g. ['admin', 'moderator']) with creator bypass */
+/** Require specific community role (e.g. ['admin', 'moderator']) with creator and global super admin bypass */
 export const requireCommunityRole = (allowedRoles = ['admin', 'moderator']) => {
   return async (req, res, next) => {
     try {
@@ -91,10 +97,10 @@ export const requireCommunityRole = (allowedRoles = ['admin', 'moderator']) => {
       const { community, membership, error } = await loadAccessContext(req);
       if (error) return errorResponse(res, ...error);
 
-      // Creator/owner has full super-admin access
-      if (policy.isOwner(community, userId) || req.user?.role === 'admin') {
+      // Global Super Admin / Admin or Creator/owner has full access
+      if (policy.isGlobalAdminUser(req.user) || policy.isOwner(community, userId)) {
         req.community = community;
-        req.communityMembership = membership || { role: 'admin', status: 'active', isOwner: true };
+        req.communityMembership = membership || { role: 'admin', status: 'active', isOwner: policy.isOwner(community, userId), isSuperAdmin: policy.isGlobalAdminUser(req.user) };
         return next();
       }
 
@@ -103,7 +109,7 @@ export const requireCommunityRole = (allowedRoles = ['admin', 'moderator']) => {
       }
 
       if (!allowedRoles.includes(membership.role)) {
-        return errorResponse(res, 403, `Forbidden: Requires ${allowedRoles.join(' or ')} privilege`);
+        return errorResponse(res, 403, 'Forbidden: Requires ' + allowedRoles.join(' or ') + ' privilege');
       }
 
       req.community = community;

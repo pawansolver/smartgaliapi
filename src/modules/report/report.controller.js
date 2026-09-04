@@ -3,7 +3,12 @@ import * as reportService from './report.service.js';
 
 export const createReport = async (req, res, next) => {
   try {
-    const report = await reportService.createReport(req.body);
+    const reportData = {
+      ...req.body,
+      reporter_id: req.body.reporter_id || req.user?.id,
+      created_by: req.body.created_by || req.user?.id,
+    };
+    const report = await reportService.createReport(reportData);
     return successResponse(res, 201, 'Report created successfully', report);
   } catch (error) {
     next(error);
@@ -33,7 +38,11 @@ export const getReportById = async (req, res, next) => {
 
 export const updateReport = async (req, res, next) => {
   try {
-    const report = await reportService.updateReport(req.params.id, req.body);
+    const updateData = {
+      ...req.body,
+      updated_by: req.body.updated_by || req.user?.id,
+    };
+    const report = await reportService.updateReport(req.params.id, updateData);
     if (!report) {
       return errorResponse(res, 404, 'Report not found');
     }
@@ -45,7 +54,8 @@ export const updateReport = async (req, res, next) => {
 
 export const deleteReport = async (req, res, next) => {
   try {
-    const { deletedRemarks, updated_by } = req.body;
+    const deletedRemarks = req.body.deletedRemarks || 'Deleted by admin';
+    const updated_by = req.body.updated_by || req.user?.id;
     const report = await reportService.softDeleteReport(req.params.id, deletedRemarks, updated_by);
     if (!report) {
       return errorResponse(res, 404, 'Report not found');
@@ -58,11 +68,12 @@ export const deleteReport = async (req, res, next) => {
 
 export const bulkDeleteReports = async (req, res, next) => {
   try {
-    const { ids, deletedRemarks, updated_by } = req.body;
+    const { ids, deletedRemarks } = req.body;
+    const updated_by = req.body.updated_by || req.user?.id;
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return errorResponse(res, 400, 'Please provide an array of ids');
     }
-    const result = await reportService.bulkSoftDeleteReports(ids, deletedRemarks, updated_by);
+    const result = await reportService.bulkSoftDeleteReports(ids, deletedRemarks || 'Bulk deleted by admin', updated_by);
     return successResponse(res, 200, 'Reports deleted successfully (bulk soft delete)', result);
   } catch (error) {
     next(error);

@@ -11,6 +11,8 @@
  */
 
 import { successResponse, errorResponse } from '../../utils/response.js';
+import { isGlobalAdminUser } from '../../middleware/auth.middleware.js';
+import CommunityMember from '../communityMember/communityMember.model.js';
 import {
   createPost,
   updatePost as serviceUpdatePost,
@@ -313,8 +315,36 @@ export const deletePost = async (req, res, next) => {
       attributes: ['id', 'user_id', 'community_id'],
     });
     if (!post) return errorResponse(res, 404, 'Post not found.');
-    if (Number(post.user_id) !== Number(req.user.id)) {
-      return errorResponse(res, 403, 'You can only delete your own posts.');
+
+    const isAuthor = Number(post.user_id) === Number(req.user.id);
+    const isGlobalAdmin = isGlobalAdminUser(req.user);
+
+    let isCommunityModerator = false;
+    if (post.community_id && !isAuthor && !isGlobalAdmin) {
+      const membership = await CommunityMember.findOne({
+        where: {
+          community_id: post.community_id,
+          user_id: req.user.id,
+          status: 'active',
+          is_deleted: false,
+        },
+        attributes: ['role'],
+      });
+      if (membership && (membership.role === 'admin' || membership.role === 'moderator')) {
+        isCommunityModerator = true;
+      } else {
+        const comm = await Community.findOne({
+          where: { communityId: post.community_id, is_deleted: false },
+          attributes: ['created_by'],
+        });
+        if (comm && Number(comm.created_by) === Number(req.user.id)) {
+          isCommunityModerator = true;
+        }
+      }
+    }
+
+    if (!isAuthor && !isGlobalAdmin && !isCommunityModerator) {
+      return errorResponse(res, 403, 'Forbidden: You do not have permission to delete or moderate this post.');
     }
 
     const transaction = await sequelize.transaction();
@@ -331,7 +361,7 @@ export const deletePost = async (req, res, next) => {
         event_type: OUTBOX_EVENT_TYPES.POST_DELETED,
         aggregate_type: OUTBOX_AGGREGATE_TYPES.POST,
         aggregate_id: String(post.id),
-        payload: { postId: Number(post.id), authorId: Number(req.user.id) },
+        payload: { postId: Number(post.id), authorId: Number(post.user_id), deletedBy: Number(req.user.id) },
       }, { transaction });
       await transaction.commit();
     } catch (err) {
@@ -339,8 +369,11 @@ export const deletePost = async (req, res, next) => {
       throw err;
     }
 
-    // Invalidate cache after delete
-    await invalidateFeedCache(req.user.id);
+    // Invalidate cache for post author and deleting user
+    await invalidateFeedCache(post.user_id);
+    if (Number(post.user_id) !== Number(req.user.id)) {
+      await invalidateFeedCache(req.user.id);
+    }
 
     return successResponse(res, 200, 'Post deleted successfully.', { postId: Number(post.id) });
   } catch (err) { next(err); }

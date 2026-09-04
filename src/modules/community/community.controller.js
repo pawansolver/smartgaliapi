@@ -246,7 +246,7 @@ export const approveJoinRequest = async (req, res, next) => {
   try {
     const { requestId } = req.params;
     const actorId = req.user?.id;
-    await joinRequestService.approveJoinRequest(req.params.id, requestId, actorId);
+    await joinRequestService.approveJoinRequest(req.params.id, requestId, req.user);
     communityJoinApprovalTotal.inc({ status: 'approved' });
     communityJoinTotal.inc({ type: 'approved' });
     return successResponse(res, 200, 'Join request approved successfully', { success: true });
@@ -259,7 +259,7 @@ export const rejectJoinRequest = async (req, res, next) => {
   try {
     const { requestId } = req.params;
     const actorId = req.user?.id;
-    await joinRequestService.rejectJoinRequest(req.params.id, requestId, actorId);
+    await joinRequestService.rejectJoinRequest(req.params.id, requestId, req.user);
     communityJoinApprovalTotal.inc({ status: 'rejected' });
     return successResponse(res, 200, 'Join request rejected', { success: true });
   } catch (error) {
@@ -286,7 +286,7 @@ export const updateMemberRole = async (req, res, next) => {
     const { role } = req.body;
     const actorId = req.user?.id;
 
-    const updated = await memberService.updateMemberRole(communityId, targetUserId, role, actorId);
+    const updated = await memberService.updateMemberRole(communityId, targetUserId, role, req.user);
     communityRoleChangeTotal.inc({ new_role: role });
     return successResponse(res, 200, 'Member role updated successfully', updated);
   } catch (error) {
@@ -300,7 +300,7 @@ export const removeMember = async (req, res, next) => {
     const targetUserId = req.params.memberId;
     const actorId = req.user?.id;
 
-    await memberService.removeMember(communityId, targetUserId, actorId);
+    await memberService.removeMember(communityId, targetUserId, req.user);
     return successResponse(res, 200, 'Member removed from community', { success: true });
   } catch (error) {
     return errorResponse(res, 400, error.message);
@@ -313,7 +313,7 @@ export const banMember = async (req, res, next) => {
     const targetUserId = req.params.memberId;
     const actorId = req.user?.id;
 
-    await memberService.banMember(communityId, targetUserId, actorId);
+    await memberService.banMember(communityId, targetUserId, req.user);
     communityMemberBanTotal.inc();
     return successResponse(res, 200, 'Member banned from community', { success: true });
   } catch (error) {
@@ -327,7 +327,7 @@ export const unbanMember = async (req, res, next) => {
     const targetUserId = req.params.memberId;
     const actorId = req.user?.id;
 
-    await memberService.unbanMember(communityId, targetUserId, actorId);
+    await memberService.unbanMember(communityId, targetUserId, req.user);
     return successResponse(res, 200, 'Member unbanned successfully', { success: true });
   } catch (error) {
     return errorResponse(res, 400, error.message);

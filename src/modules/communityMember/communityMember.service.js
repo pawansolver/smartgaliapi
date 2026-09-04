@@ -163,7 +163,9 @@ export const leaveCommunity = async (communityId, userId) => {
  * Change member role.
  * Enforces policy against self-promotion and owner demotion.
  */
-export const updateMemberRole = async (communityId, targetUserId, newRole, actorUserId) => {
+export const updateMemberRole = async (communityId, targetUserId, newRole, actorUser) => {
+  const actorUserId = typeof actorUser === 'object' ? actorUser?.id : actorUser;
+  const userObj = typeof actorUser === 'object' ? actorUser : { id: actorUserId };
   if (!['admin', 'moderator', 'member'].includes(newRole)) {
     throw new Error('Invalid role specified');
   }
@@ -191,7 +193,7 @@ export const updateMemberRole = async (communityId, targetUserId, newRole, actor
 
     if (!targetMembership) throw new Error('Active member not found in community');
 
-    if (!policy.canChangeMemberRole(community, actorMembership, { id: actorUserId }, targetMembership, newRole)) {
+    if (!policy.canChangeMemberRole(community, actorMembership, userObj, targetMembership, newRole)) {
       throw new Error('Not authorized to change role for this member');
     }
 
@@ -228,7 +230,9 @@ export const updateMemberRole = async (communityId, targetUserId, newRole, actor
  * Remove a member.
  * Transition: 'active' -> 'left'
  */
-export const removeMember = async (communityId, targetUserId, actorUserId) => {
+export const removeMember = async (communityId, targetUserId, actorUser) => {
+  const actorUserId = typeof actorUser === 'object' ? actorUser?.id : actorUser;
+  const userObj = typeof actorUser === 'object' ? actorUser : { id: actorUserId };
   const transaction = await sequelize.transaction();
   try {
     const community = await Community.findOne({
@@ -252,7 +256,7 @@ export const removeMember = async (communityId, targetUserId, actorUserId) => {
 
     if (!targetMembership) throw new Error('Active member not found');
 
-    if (!policy.canRemoveMember(community, actorMembership, { id: actorUserId }, targetMembership)) {
+    if (!policy.canRemoveMember(community, actorMembership, userObj, targetMembership)) {
       throw new Error('Not authorized to remove this member');
     }
 
@@ -289,7 +293,9 @@ export const removeMember = async (communityId, targetUserId, actorUserId) => {
  * Ban a member.
  * Transition: any -> 'banned'
  */
-export const banMember = async (communityId, targetUserId, actorUserId) => {
+export const banMember = async (communityId, targetUserId, actorUser) => {
+  const actorUserId = typeof actorUser === 'object' ? actorUser?.id : actorUser;
+  const userObj = typeof actorUser === 'object' ? actorUser : { id: actorUserId };
   const transaction = await sequelize.transaction();
   try {
     const community = await Community.findOne({
@@ -311,7 +317,7 @@ export const banMember = async (communityId, targetUserId, actorUserId) => {
       }),
     ]);
 
-    if (!policy.canBanMember(community, actorMembership, { id: actorUserId }, targetMembership)) {
+    if (!policy.canBanMember(community, actorMembership, userObj, targetMembership)) {
       throw new Error('Not authorized to ban this member');
     }
 
@@ -365,7 +371,9 @@ export const banMember = async (communityId, targetUserId, actorUserId) => {
  * Unban a member.
  * Transition: 'banned' -> 'left'
  */
-export const unbanMember = async (communityId, targetUserId, actorUserId) => {
+export const unbanMember = async (communityId, targetUserId, actorUser) => {
+  const actorUserId = typeof actorUser === 'object' ? actorUser?.id : actorUser;
+  const userObj = typeof actorUser === 'object' ? actorUser : { id: actorUserId };
   const transaction = await sequelize.transaction();
   try {
     const community = await Community.findOne({

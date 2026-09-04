@@ -1,13 +1,17 @@
 import express from 'express';
 import * as roleController from './role.controller.js';
+import { authenticate, requireSuperAdmin } from '../../middleware/auth.middleware.js';
 
 const router = express.Router();
+
+// System Administration (PRD 19.11: Create Roles, Assign Permissions) - Super Admin ONLY
+router.use(authenticate, requireSuperAdmin);
 
 /**
  * @swagger
  * tags:
  *   name: Roles
- *   description: Role management APIs
+ *   description: Role management APIs (Super Admin Exclusive)
  */
 
 /**
@@ -34,6 +38,8 @@ const router = express.Router();
  *     responses:
  *       201:
  *         description: Role created successfully
+ *       403:
+ *         description: Super Administrator privileges required
  */
 router.post('/', roleController.createRole);
 

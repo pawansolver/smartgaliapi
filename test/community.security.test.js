@@ -1,7 +1,8 @@
+import sequelize from '../src/config/db.js';
 /**
  * Phase 15 & 16 — Community Enterprise Security, RBAC & Failure Tests
  */
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import * as policy from '../src/modules/community/community.policy.js';
 import * as pollService from '../src/modules/community_poll/community_poll.service.js';
@@ -147,9 +148,14 @@ test('Step 1 Authorization: Non-owner admin cannot delete community without owne
 
 test('Step 1 Authorization: Super Admin has global override for update, delete, and poll moderation', () => {
   const comm = dummyCommunity({ created_by: 1 });
-  const superAdmin = { id: 99, role: 'admin', userRole: 'admin' };
+  const superAdmin = { id: 99, role: 'super_admin', userRole: 'super_admin' };
   const poll = { id: 101, created_by: 6 };
   assert.equal(policy.canUpdateCommunity(comm, null, superAdmin), true);
   assert.equal(policy.canDeleteCommunity(comm, null, superAdmin), true);
   assert.equal(policy.canDeletePoll(comm, null, superAdmin, poll), true);
+});
+
+
+after(async () => {
+  try { await sequelize.close(); } catch {}
 });

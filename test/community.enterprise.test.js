@@ -1,4 +1,5 @@
-import test from 'node:test';
+import sequelize from '../src/config/db.js';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { up as migrateCommunity } from '../scripts/migrations/010-enterprise-community.js';
 import { schemas } from '../src/modules/community/community.validation.js';
@@ -106,4 +107,9 @@ test('private community reads require active membership while public reads remai
     () => { continued = true; },
   );
   assert.equal(continued, true);
+});
+
+
+after(async () => {
+  try { await sequelize.close(); } catch {}
 });
