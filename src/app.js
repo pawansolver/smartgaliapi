@@ -22,23 +22,35 @@ app.use(helmet({
 })); // Security headers
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, curl)
-    if (!origin) return callback(null, true);
-    const normalizedOrigin = origin.replace(/\/+$/, '');
-    // Flutter Web uses a random localhost port during development. Loopback
-    // origins remain local to the developer's machine and must work even when
-    // that browser build calls the deployed API.
-    const isLoopbackOrigin =
-      /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalizedOrigin);
-    if (isLoopbackOrigin || env.corsOrigins.includes(normalizedOrigin)) {
+    // Allow requests with no origin (mobile apps, Postman, curl) or file:// origin ('null')
+    if (!origin || origin === 'null') {
       return callback(null, true);
     }
+    
+    // In development mode, allow all origins (Live Server, Flutter Web, local file / dev origins)
+    if (!env.isProduction) {
+      return callback(null, true);
+    }
+
+    const normalizedOrigin = origin.replace(/\/+$/, '');
+    const isLoopbackOrLocal =
+      /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/.test(normalizedOrigin) ||
+      /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(normalizedOrigin);
+
+    if (
+      env.corsOrigins.includes('*') ||
+      isLoopbackOrLocal ||
+      env.corsOrigins.includes(normalizedOrigin)
+    ) {
+      return callback(null, true);
+    }
+
     const error = new Error('Origin is not allowed by CORS.');
     error.statusCode = 403;
     callback(error);
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   credentials: true,
 })); // Enable CORS
 // Skip JSON / urlencoded parsers for multipart requests (file uploads).

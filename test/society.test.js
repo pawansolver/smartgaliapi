@@ -63,6 +63,10 @@ test('Society Functional Suite: Complete 8-Module Lifecycle Test', async (t) => 
   });
 
   await t.test('2. Society Membership Registration & Approval Lifecycle', async () => {
+    // Clean up any stale member records from prior runs
+    await SocietyMember.destroy({
+      where: { society_id: testSocietyId, user_id: [resident1.userId, resident2.userId] },
+    });
     // Resident 1 registers
     const member1 = await memberService.createMember(testSocietyId, resident1.userId, {
       flat_no: 'A-401',

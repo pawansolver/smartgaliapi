@@ -418,6 +418,7 @@ export const getCommunityMembers = async (communityId, { page = 1, limit = 50, r
   if (search && search.trim()) {
     userWhere[Op.or] = [
       { userName: { [Op.like]: `%${search.trim()}%` } },
+      sequelize.where(sequelize.col('user.profile.fullName'), { [Op.like]: `%${search.trim()}%` }),
     ];
   }
 

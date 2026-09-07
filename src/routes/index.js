@@ -1,5 +1,6 @@
 import express from 'express';
 import exampleRoutes from '../modules/example/example.routes.js';
+import permissionRoutes from '../modules/permission/permission.routes.js';
 import roleRoutes from '../modules/role/role.routes.js';
 import userRoutes from '../modules/user/user.routes.js';
 import userProfileRoutes from '../modules/userProfile/userProfile.routes.js';
@@ -59,6 +60,9 @@ router.use(generalApiLimiter);
 // Mount example module routes
 router.use('/example', exampleRoutes);
 router.use('/role', roleRoutes);
+router.use('/roles', roleRoutes);
+router.use('/permission', permissionRoutes);
+router.use('/permissions', permissionRoutes);
 router.use('/user', userRoutes);
 router.use('/user-profile', userProfileRoutes);
 router.use('/profile', profileRoutes);

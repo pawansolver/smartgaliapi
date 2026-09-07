@@ -26,7 +26,7 @@ export const createMember = async (societyId, userId, memberData, meta = {}) => 
       user_id: userId,
       flat_no: memberData.flat_no || null,
       role: memberData.role || 'member',
-      status: memberData.status || 'active',
+      status: memberData.status || 'pending',
       joined_at: new Date(),
       created_by: userId,
       created_at: new Date(),

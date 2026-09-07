@@ -6,9 +6,19 @@ export const createCommunityCategory = async (req, res, next) => {
   try {
     const categoryData = { ...req.body };
 
-    // Set icon path if a file was uploaded
+    // Support both communityCategoryName and aliases name/categoryName
+    const catName = categoryData.communityCategoryName || categoryData.categoryName || categoryData.name;
+    if (!catName || !String(catName).trim()) {
+      return errorResponse(res, 400, 'Community category name is required');
+    }
+
+    categoryData.communityCategoryName = String(catName).trim();
+
+    // Set icon path if a file was uploaded or alias icon was passed
     if (req.file) {
       categoryData.communityCategoryIcon = getImageUrl(req, req.file, 'communityCategory');
+    } else if (categoryData.icon && !categoryData.communityCategoryIcon) {
+      categoryData.communityCategoryIcon = categoryData.icon;
     }
 
     const category = await communityCategoryService.createCommunityCategory(categoryData);
@@ -46,9 +56,18 @@ export const updateCommunityCategory = async (req, res, next) => {
   try {
     const updateData = { ...req.body };
 
-    // Set new icon path if a new file was uploaded
+    if (updateData.name || updateData.categoryName || updateData.communityCategoryName) {
+      const catName = updateData.communityCategoryName || updateData.name || updateData.categoryName;
+      if (catName) {
+        updateData.communityCategoryName = String(catName).trim();
+      }
+    }
+
+    // Set new icon path if a new file was uploaded or alias icon was passed
     if (req.file) {
       updateData.communityCategoryIcon = getImageUrl(req, req.file, 'communityCategory');
+    } else if (updateData.icon && !updateData.communityCategoryIcon) {
+      updateData.communityCategoryIcon = updateData.icon;
     }
 
     const category = await communityCategoryService.updateCommunityCategory(req.params.id, updateData);
@@ -57,13 +76,16 @@ export const updateCommunityCategory = async (req, res, next) => {
     }
     return successResponse(res, 200, 'Community Category updated successfully', category);
   } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return errorResponse(res, 400, 'Community Category name already exists');
+    }
     next(error);
   }
 };
 
 export const deleteCommunityCategory = async (req, res, next) => {
   try {
-    const { deletedRemarks, updated_by } = req.body;
+    const { deletedRemarks, updated_by } = req.body || {};
     const category = await communityCategoryService.softDeleteCommunityCategory(req.params.id, deletedRemarks, updated_by);
     if (!category) {
       return errorResponse(res, 404, 'Community Category not found');

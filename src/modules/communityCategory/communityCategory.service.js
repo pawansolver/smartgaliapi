@@ -34,7 +34,12 @@ const normalizeIconUrl = (iconUrl) => {
 };
 
 export const createCommunityCategory = async (categoryData) => {
-  return await CommunityCategory.create(categoryData);
+  const cat = await CommunityCategory.create(categoryData);
+  const json = cat.toJSON();
+  json.communityCategoryIcon = normalizeIconUrl(json.communityCategoryIcon);
+  json.id = json.communityCategoryId;
+  json.name = json.communityCategoryName;
+  return json;
 };
 
 export const getAllCommunityCategories = async () => {
@@ -45,6 +50,8 @@ export const getAllCommunityCategories = async () => {
   return cats.map((cat) => {
     const json = cat.toJSON();
     json.communityCategoryIcon = normalizeIconUrl(json.communityCategoryIcon);
+    json.id = json.communityCategoryId;
+    json.name = json.communityCategoryName;
     return json;
   });
 };
@@ -54,13 +61,20 @@ export const getCommunityCategoryById = async (communityCategoryId) => {
   if (!category) return null;
   const json = category.toJSON();
   json.communityCategoryIcon = normalizeIconUrl(json.communityCategoryIcon);
+  json.id = json.communityCategoryId;
+  json.name = json.communityCategoryName;
   return json;
 };
 
 export const updateCommunityCategory = async (communityCategoryId, updateData) => {
   const category = await CommunityCategory.findOne({ where: { communityCategoryId, is_deleted: false } });
   if (!category) return null;
-  return await category.update({ ...updateData, updatedAt: new Date() });
+  const updated = await category.update({ ...updateData, updatedAt: new Date() });
+  const json = updated.toJSON();
+  json.communityCategoryIcon = normalizeIconUrl(json.communityCategoryIcon);
+  json.id = json.communityCategoryId;
+  json.name = json.communityCategoryName;
+  return json;
 };
 
 export const softDeleteCommunityCategory = async (communityCategoryId, deletedRemarks, updated_by) => {

@@ -1,3 +1,4 @@
+import * as policy from './community.policy.js';
 import * as communityService from './community.service.js';
 import * as memberService from '../communityMember/communityMember.service.js';
 import * as joinRequestService from '../community_join_request/community_join_request.service.js';

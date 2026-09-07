@@ -1,183 +1,102 @@
-import { successResponse, errorResponse } from '../../utils/response.js';
-import { getImageUrl } from '../../utils/fileUpload.js';
 import * as userService from './user.service.js';
-import bcrypt from 'bcrypt';
+import * as permissionService from '../permission/permission.service.js';
+import { successResponse, errorResponse } from '../../utils/response.js';
 
 export const createUser = async (req, res, next) => {
   try {
-    const userData = { ...req.body };
-    
-    // Hash password if provided
-    if (userData.password) {
-      userData.password = await bcrypt.hash(userData.password, 10);
-    }
-
-    // Set profile_image path if a file was uploaded
-    if (req.file) {
-      userData.profile_image = getImageUrl(req, req.file, 'user');
-    }
-
-    const user = await userService.createUser(userData);
-    
-    // Remove password from response
-    const userResponse = user.toJSON();
-    delete userResponse.password;
-
-    return successResponse(res, 201, 'User created successfully', userResponse);
+    const user = await userService.createUser(req.body);
+    return successResponse(res, 201, 'User created successfully', user);
   } catch (error) {
-    if (error.name === 'SequelizeUniqueConstraintError') {
-      return errorResponse(res, 400, 'Email already exists');
-    }
-    next(error);
+    return next(error);
   }
 };
 
 export const getAllUsers = async (req, res, next) => {
   try {
-    const roleName = req.query.roleName;
-    let users;
-    
-    if (roleName) {
-      users = await userService.getUsersByRole(roleName);
-    } else {
-      users = await userService.getAllUsers();
-    }
-    
-    // Remove passwords from response
-    const usersResponse = users.map(user => {
-      const userJson = user.toJSON();
-      delete userJson.password;
-      return userJson;
-    });
-
-    return successResponse(res, 200, 'Users fetched successfully', usersResponse);
+    const users = await userService.getAllUsers();
+    return successResponse(res, 200, 'Users fetched successfully', users);
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const getUserById = async (req, res, next) => {
   try {
     const user = await userService.getUserById(req.params.id);
-    if (!user) {
-      return errorResponse(res, 404, 'User not found');
-    }
-
-    const userResponse = user.toJSON();
-    delete userResponse.password;
-
-    return successResponse(res, 200, 'User fetched successfully', userResponse);
+    if (!user) return errorResponse(res, 404, 'User not found');
+    return successResponse(res, 200, 'User fetched successfully', user);
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const updateUser = async (req, res, next) => {
   try {
-    const updateData = { ...req.body };
-
-    // Hash new password if provided
-    if (updateData.password) {
-      updateData.password = await bcrypt.hash(updateData.password, 10);
-    }
-
-    // Set new profile_image path if a new file was uploaded
-    if (req.file) {
-      updateData.profile_image = getImageUrl(req, req.file, 'user');
-    }
-
-    const user = await userService.updateUser(req.params.id, updateData);
-    if (!user) {
-      return errorResponse(res, 404, 'User not found');
-    }
-
-    const userResponse = user.toJSON();
-    delete userResponse.password;
-
-    return successResponse(res, 200, 'User updated successfully', userResponse);
+    const user = await userService.updateUser(req.params.id, req.body);
+    if (!user) return errorResponse(res, 404, 'User not found');
+    return successResponse(res, 200, 'User updated successfully', user);
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const deleteUser = async (req, res, next) => {
   try {
-    const { deletedRemarks, updated_by } = req.body;
-    const user = await userService.softDeleteUser(req.params.id, deletedRemarks, updated_by);
-    if (!user) {
-      return errorResponse(res, 404, 'User not found');
-    }
-    return successResponse(res, 200, 'User deleted successfully (soft delete)', null);
+    const user = await userService.softDeleteUser(req.params.id, req.body.deletedRemarks, req.user?.id);
+    if (!user) return errorResponse(res, 404, 'User not found');
+    return successResponse(res, 200, 'User deleted successfully');
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const blockUser = async (req, res, next) => {
   try {
-    const targetUserId = req.params.id;
-    const currentUserId = req.user.id;
-    if (Number(targetUserId) === Number(currentUserId)) {
-      return errorResponse(res, 400, 'You cannot block yourself.');
-    }
-    const { default: sequelize } = await import('../../config/db.js');
-    await sequelize.query(
-      `INSERT IGNORE INTO user_blocks (user_id, blocked_user_id, created_at)
-       VALUES (?, ?, NOW())`,
-      { replacements: [currentUserId, targetUserId] }
-    );
-    return successResponse(res, 200, 'User blocked successfully', null);
+    const user = await userService.blockUser(req.params.id);
+    if (!user) return errorResponse(res, 404, 'User not found');
+    return successResponse(res, 200, 'User blocked successfully', user);
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const unblockUser = async (req, res, next) => {
   try {
-    const targetUserId = req.params.id;
-    const currentUserId = req.user.id;
-    const { default: sequelize } = await import('../../config/db.js');
-    await sequelize.query(
-      `DELETE FROM user_blocks WHERE user_id = ? AND blocked_user_id = ?`,
-      { replacements: [currentUserId, targetUserId] }
-    );
-    return successResponse(res, 200, 'User unblocked successfully', null);
+    const user = await userService.unblockUser(req.params.id);
+    if (!user) return errorResponse(res, 404, 'User not found');
+    return successResponse(res, 200, 'User unblocked successfully', user);
   } catch (error) {
-    next(error);
+    return next(error);
+  }
+};
+
+export const verifyUser = async (req, res, next) => {
+  try {
+    const user = await userService.verifyUser(req.params.id);
+    if (!user) return errorResponse(res, 404, 'User not found');
+    return successResponse(res, 200, 'User verified successfully', user);
+  } catch (error) {
+    return next(error);
   }
 };
 
 export const muteUser = async (req, res, next) => {
   try {
-    const targetUserId = req.params.id;
-    const currentUserId = req.user.id;
-    if (Number(targetUserId) === Number(currentUserId)) {
-      return errorResponse(res, 400, 'You cannot mute yourself.');
-    }
-    const { default: sequelize } = await import('../../config/db.js');
-    await sequelize.query(
-      `INSERT IGNORE INTO user_mutes (user_id, muted_user_id, created_at)
-       VALUES (?, ?, NOW())`,
-      { replacements: [currentUserId, targetUserId] }
-    );
-    return successResponse(res, 200, 'User muted successfully', null);
+    const user = await userService.updateUser(req.params.id, { is_muted: true });
+    if (!user) return errorResponse(res, 404, 'User not found');
+    return successResponse(res, 200, 'User muted successfully', user);
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const unmuteUser = async (req, res, next) => {
   try {
-    const targetUserId = req.params.id;
-    const currentUserId = req.user.id;
-    const { default: sequelize } = await import('../../config/db.js');
-    await sequelize.query(
-      `DELETE FROM user_mutes WHERE user_id = ? AND muted_user_id = ?`,
-      { replacements: [currentUserId, targetUserId] }
-    );
-    return successResponse(res, 200, 'User unmuted successfully', null);
+    const user = await userService.updateUser(req.params.id, { is_muted: false });
+    if (!user) return errorResponse(res, 404, 'User not found');
+    return successResponse(res, 200, 'User unmuted successfully', user);
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
@@ -186,7 +105,7 @@ export const getPendingUsers = async (req, res, next) => {
     const users = await userService.getPendingVerifications();
     return successResponse(res, 200, 'Pending users fetched successfully', users);
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
@@ -195,20 +114,111 @@ export const getBlockedUsersList = async (req, res, next) => {
     const users = await userService.getBlockedUsers();
     return successResponse(res, 200, 'Blocked users fetched successfully', users);
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
-export const verifyUser = async (req, res, next) => {
+// PBAC User Role & Direct Permission Controllers
+export const getUserRoles = async (req, res, next) => {
   try {
-    const user = await userService.verifyUser(req.params.id);
-    if (!user) {
-      return errorResponse(res, 404, 'User not found');
-    }
-    return successResponse(res, 200, 'User verified successfully', user);
+    const roles = await permissionService.getUserRoles(req.params.id);
+    return successResponse(res, 200, 'User roles fetched successfully', roles);
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
+export const updateUserRoles = async (req, res, next) => {
+  try {
+    const roleIds = req.body.roleIds || req.body.roles || [];
+    const roles = await permissionService.assignRolesToUser(req.params.id, roleIds, req.user);
+    return successResponse(res, 200, 'User roles updated successfully', roles);
+  } catch (error) {
+    if (error.message.includes('Forbidden')) {
+      return errorResponse(res, 403, error.message);
+    }
+    return next(error);
+  }
+};
 
+export const getUserPermissions = async (req, res, next) => {
+  try {
+    const permissions = await permissionService.getUserDirectPermissions(req.params.id);
+    return successResponse(res, 200, 'User direct permissions fetched successfully', permissions);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const updateUserPermissions = async (req, res, next) => {
+  try {
+    const assignments = req.body.permissions || req.body.assignments || [];
+    const permissions = await permissionService.assignDirectUserPermissions(req.params.id, assignments, req.user);
+    return successResponse(res, 200, 'User direct permissions updated successfully', permissions);
+  } catch (error) {
+    if (error.message.includes('Forbidden')) {
+      return errorResponse(res, 403, error.message);
+    }
+    return next(error);
+  }
+};
+
+export const deleteUserPermission = async (req, res, next) => {
+  try {
+    await permissionService.removeDirectUserPermission(req.params.id, req.params.permissionId, req.user);
+    return successResponse(res, 200, 'User direct permission removed successfully');
+  } catch (error) {
+    if (error.message.includes('Forbidden')) {
+      return errorResponse(res, 403, error.message);
+    }
+    return next(error);
+  }
+};
+
+// Admin User Management Controllers (Super Admin Exclusive)
+export const listAdminUsers = async (req, res, next) => {
+  try {
+    const admins = await userService.listAdminUsers();
+    return successResponse(res, 200, 'Admin users fetched successfully', admins);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const createAdminUser = async (req, res, next) => {
+  try {
+    const admin = await userService.createAdminUser(req.body, req.user);
+    return successResponse(res, 201, 'Admin user created successfully', admin);
+  } catch (error) {
+    if (error.message.includes('Forbidden')) {
+      return errorResponse(res, 403, error.message);
+    }
+    return next(error);
+  }
+};
+
+export const updateAdminUser = async (req, res, next) => {
+  try {
+    const admin = await userService.updateAdminUser(req.params.id, req.body, req.user);
+    if (!admin) return errorResponse(res, 404, 'Admin user not found');
+    return successResponse(res, 200, 'Admin user updated successfully', admin);
+  } catch (error) {
+    if (error.message.includes('Forbidden')) {
+      return errorResponse(res, 403, error.message);
+    }
+    return next(error);
+  }
+};
+
+export const deactivateAdminUser = async (req, res, next) => {
+  try {
+    const admin = await userService.deactivateAdminUser(req.params.id, req.user);
+    if (!admin) return errorResponse(res, 404, 'Admin user not found');
+    return successResponse(res, 200, 'Admin user deactivated successfully', admin);
+  } catch (error) {
+    if (error.message.includes('Forbidden')) {
+      return errorResponse(res, 403, error.message);
+    }
+    return next(error);
+  }
+};
