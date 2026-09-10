@@ -54,6 +54,19 @@ const createTransporter = () => {
  * @param {string} otp     - The 6-digit OTP code
  */
 export const sendOtpEmail = async (toEmail, otp) => {
+  const isDevMode = process.env.NODE_ENV === 'development';
+  const isDummyHost =
+    !process.env.EMAIL_HOST ||
+    process.env.EMAIL_HOST === 'smtp.example.com' ||
+    process.env.EMAIL_PASS === 'replace_with_smtp_password';
+
+  if (isDevMode && isDummyHost) {
+    console.log('\n======================================================');
+    console.log('[DEV OTP BYPASS] No SMTP configured. Mocking OTP delivery.');
+    console.log('[DEV OTP CODE] Verification code for ' + toEmail + ': ' + otp);
+    console.log('======================================================\n');
+    return { accepted: [toEmail], messageId: 'mock-dev-otp', devOtp: otp };
+  }
   // Lazy-init: create transporter only once, reset on failure
   if (!transporter) {
     transporter = createTransporter();
@@ -146,6 +159,13 @@ export const sendOtpEmail = async (toEmail, otp) => {
       `host: ${process.env.EMAIL_HOST}:${process.env.EMAIL_PORT}, ` +
       `message: ${sendError.message}`
     );
+    if (isDevMode) {
+      console.log('\n======================================================');
+      console.log('[DEV OTP FALLBACK] SMTP failed (' + (sendError.message || 'unknown') + '). Using dev OTP.');
+      console.log('[DEV OTP CODE] Verification code for ' + toEmail + ': ' + otp);
+      console.log('======================================================\n');
+      return { accepted: [toEmail], messageId: 'mock-dev-otp', devOtp: otp };
+    }
     const error = new Error('Failed to send OTP email. Please try again in a moment.');
     error.statusCode = 503;
     error.cause = sendError;

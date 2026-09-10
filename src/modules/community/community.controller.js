@@ -649,7 +649,8 @@ export const getInviteableUsers = async (req, res, next) => {
 
 export const sendInvitations = async (req, res, next) => {
   try {
-    const invitations = await invitationService.sendInvitations(req.params.id, req.user.id, req.body.userIds);
+    const targetUserIds = req.body.userIds || req.body.invitee_ids || [];
+    const invitations = await invitationService.sendInvitations(req.params.id, req.user.id, targetUserIds);
     return successResponse(res, 201, 'Community invitations sent', { invitations, count: invitations.length });
   } catch (error) {
     return next(error);

@@ -32,6 +32,7 @@ router.get('/categories', eventReadLimiter, eventController.getEventCategories);
 router.get('/upcoming', eventReadLimiter, optionalAuthenticate, validateQuery(upcomingQuerySchema), eventController.getUpcomingEvents);
 router.get('/nearby', eventNearbyLimiter, optionalAuthenticate, validateQuery(nearbyQuerySchema), eventController.getNearbyEvents);
 router.get('/my-rsvps', authenticate, eventReadLimiter, eventController.getMyRsvps);
+router.get('/my', authenticate, eventReadLimiter, eventController.getMyRsvps); // PRD Sec 18.6
 
 // ── CRUD Endpoints ───────────────────────────────────────────────────────────
 router.get('/', eventReadLimiter, optionalAuthenticate, validateQuery(upcomingQuerySchema), eventController.getUpcomingEvents);
@@ -101,6 +102,23 @@ router.get(
   optionalAuthenticate,
   validateParams(eventIdParamSchema),
   eventController.getEventParticipants
+);
+
+// PRD Section 18.6: POST /events/:id/join and POST /events/:id/leave
+router.post(
+  '/:id/join',
+  authenticate,
+  eventRsvpLimiter,
+  validateParams(eventIdParamSchema),
+  eventController.joinEvent
+);
+
+router.post(
+  '/:id/leave',
+  authenticate,
+  eventRsvpLimiter,
+  validateParams(eventIdParamSchema),
+  eventController.leaveEvent
 );
 
 export default router;

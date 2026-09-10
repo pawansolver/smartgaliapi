@@ -1,10 +1,10 @@
 /**
  * Society RBAC & Authorization Policy Layer
- * ─────────────────────────────────────────────────────────────────────────────
+ * "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
  * Centralized authorization rules for all Society operations.
  * Enforces principle of least privilege, IDOR protection, tenancy isolation,
  * and status transition integrity.
- * ─────────────────────────────────────────────────────────────────────────────
+ * "?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?"?
  */
 
 export const SOCIETY_ROLES = Object.freeze({
@@ -49,6 +49,18 @@ export const SOCIETY_PERMISSIONS = Object.freeze({
   POLL_VOTE: 'POLL_VOTE',
 });
 
+export const isSuperAdminUser = (user) => {
+  if (!user) return false;
+  const role = String(user.userRole || user.role || '').toLowerCase().trim();
+  return role === 'super_admin' || role === 'superadmin';
+};
+
+export const isGlobalAdminUser = (user) => {
+  if (!user) return false;
+  const role = String(user.userRole || user.role || '').toLowerCase().trim();
+  return role === 'super_admin' || role === 'superadmin' || role === 'admin';
+};
+
 export const isOwner = (society, userId) => {
   if (!society || !userId) return false;
   return Number(society.user_id) === Number(userId) || Number(society.created_by) === Number(userId);
@@ -70,21 +82,25 @@ export const canViewSociety = (society, membership, user) => {
 };
 
 export const canManageSociety = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return role === 'owner' || role === 'admin';
 };
 
 export const canViewMembers = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee', 'security', 'member', 'tenant'].includes(role);
 };
 
 export const canApproveMember = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee'].includes(role);
 };
 
 export const canRemoveMember = (society, membership, user, targetMember = null) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   if (role === 'owner' || role === 'admin') return true;
   // User can leave society themselves
@@ -93,25 +109,30 @@ export const canRemoveMember = (society, membership, user, targetMember = null) 
 };
 
 export const canUpdateMemberRole = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return role === 'owner' || role === 'admin';
 };
 
 export const canTransferOwnership = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   return isOwner(society, user?.id);
 };
 
 export const canViewAnnouncements = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee', 'security', 'member', 'tenant'].includes(role);
 };
 
 export const canCreateAnnouncement = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee'].includes(role);
 };
 
 export const canUpdateAnnouncement = (society, membership, user, announcement = null) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   if (role === 'owner' || role === 'admin') return true;
   if (role === 'committee' && announcement && Number(announcement.created_by) === Number(user?.id)) return true;
@@ -119,6 +140,7 @@ export const canUpdateAnnouncement = (society, membership, user, announcement = 
 };
 
 export const canDeleteAnnouncement = (society, membership, user, announcement = null) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   if (role === 'owner' || role === 'admin') return true;
   if (role === 'committee' && announcement && Number(announcement.created_by) === Number(user?.id)) return true;
@@ -126,11 +148,13 @@ export const canDeleteAnnouncement = (society, membership, user, announcement = 
 };
 
 export const canCreateComplaint = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee', 'member', 'tenant'].includes(role);
 };
 
 export const canViewComplaint = (society, membership, user, complaint) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   if (['owner', 'admin', 'committee'].includes(role)) return true;
   if (complaint && Number(complaint.user_id) === Number(user?.id)) return true;
@@ -139,6 +163,7 @@ export const canViewComplaint = (society, membership, user, complaint) => {
 };
 
 export const canUpdateComplaint = (society, membership, user, complaint) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   if (['owner', 'admin', 'committee'].includes(role)) return true;
   if (complaint && Number(complaint.assigned_to) === Number(user?.id)) return true;
@@ -147,16 +172,19 @@ export const canUpdateComplaint = (society, membership, user, complaint) => {
 };
 
 export const canManageComplaint = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee'].includes(role);
 };
 
 export const canCreateVisitor = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee', 'security', 'member', 'tenant'].includes(role);
 };
 
 export const canViewVisitor = (society, membership, user, visitor) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   if (['owner', 'admin', 'committee', 'security'].includes(role)) return true;
   if (visitor && Number(visitor.user_id) === Number(user?.id)) return true;
@@ -164,6 +192,7 @@ export const canViewVisitor = (society, membership, user, visitor) => {
 };
 
 export const canApproveVisitor = (society, membership, user, visitor) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   if (['owner', 'admin', 'security'].includes(role)) return true;
   if (visitor && Number(visitor.user_id) === Number(user?.id)) return true;
@@ -171,46 +200,55 @@ export const canApproveVisitor = (society, membership, user, visitor) => {
 };
 
 export const canCheckInVisitor = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'security'].includes(role);
 };
 
 export const canCheckOutVisitor = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'security'].includes(role);
 };
 
 export const canViewFacilities = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee', 'security', 'member', 'tenant'].includes(role);
 };
 
 export const canManageFacilities = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee'].includes(role);
 };
 
 export const canViewParking = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee', 'security', 'member', 'tenant'].includes(role);
 };
 
 export const canAllocateParking = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee'].includes(role);
 };
 
 export const canViewPolls = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee', 'security', 'member', 'tenant'].includes(role);
 };
 
 export const canCreatePoll = (society, membership, user) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee'].includes(role);
 };
 
 export const canUpdatePoll = (society, membership, user, poll = null) => {
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   if (role === 'owner' || role === 'admin') return true;
   if (role === 'committee' && poll && Number(poll.created_by) === Number(user?.id)) return true;
@@ -222,6 +260,7 @@ export const canVotePoll = (society, membership, user, poll = null) => {
     if (poll.status !== 'active') return false;
     if (poll.expires_at && new Date(poll.expires_at) < new Date()) return false;
   }
+  if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
   return ['owner', 'admin', 'committee', 'member', 'tenant'].includes(role);
 };

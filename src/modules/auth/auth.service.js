@@ -95,7 +95,7 @@ const sendNewOtp = async ({ email, purpose, userId = null, pendingSignupId = nul
     await row.destroy().catch(() => {});
     throw error;
   }
-  return row;
+  return { row, rawOtp };
 };
 
 const rejectOtherActiveOtps = (where, transaction) =>

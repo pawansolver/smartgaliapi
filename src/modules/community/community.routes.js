@@ -54,6 +54,7 @@ router.post('/:id/members/:memberId/ban', authenticate, communityMutationLimiter
 router.post('/:id/members/:memberId/unban', authenticate, communityMutationLimiter, validate(schemas.moderation), requireCommunityRole(['admin']), communityController.unbanMember);
 router.get('/:id/inviteable-users', authenticate, validate(schemas.inviteable), requireCommunityRole(['admin', 'moderator']), communityController.getInviteableUsers);
 router.post('/:id/invitations', authenticate, communityInviteLimiter, validate(schemas.invite), requireCommunityRole(['admin', 'moderator']), communityController.sendInvitations);
+router.post('/:id/invite', authenticate, communityInviteLimiter, validate(schemas.invite), requireCommunityRole(['admin', 'moderator']), communityController.sendInvitations); // PRD Sec 18.3
 router.post('/:id/invitations/:invitationId/respond', authenticate, communityMutationLimiter, validate(schemas.invitationResponse), communityController.respondToInvitation);
 
 // ── Pinned Announcements ───────────────────────────────────────────────────────

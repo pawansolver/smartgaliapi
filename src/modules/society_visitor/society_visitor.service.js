@@ -6,6 +6,7 @@ import SocietyProfile from '../society_profile/society_profile.model.js';
 import User from '../user/user.model.js';
 import { createEvent } from '../outbox/outbox.service.js';
 import { logSocietyAudit } from '../society_profile/society_audit_log.service.js';
+import { emitNotification } from '../notification/notification.service.js';
 
 // Strict State Transition Map
 const ALLOWED_TRANSITIONS = {

@@ -85,7 +85,8 @@ export const listSocietyMemberQuerySchema = Joi.object({
 export const createAnnouncementSchema = Joi.object({
   society_id: id.required(),
   title: Joi.string().trim().min(3).max(255).required(),
-  message: Joi.string().trim().max(10000).required(),
+  message: Joi.string().trim().max(10000),
+  content: Joi.string().trim().max(10000),
   priority: Joi.string().valid(...Object.values(ANNOUNCEMENT_PRIORITY)).default(ANNOUNCEMENT_PRIORITY.MEDIUM),
   category: Joi.string().trim().max(100).default('general'),
   is_pinned: Joi.boolean().default(false),

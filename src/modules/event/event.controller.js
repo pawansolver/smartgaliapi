@@ -206,3 +206,31 @@ export const bulkDeleteEvents = async (req, res, next) => {
     next(error);
   }
 };
+export const joinEvent = async (req, res, next) => {
+  try {
+    const eventId = req.params.id;
+    const userId = req.user?.id || req.user?.userId;
+    const status = req.body?.status || 'going';
+    const participant = await participantService.setEventRsvp(eventId, userId, status);
+    return successResponse(res, 200, 'Successfully joined the event', participant);
+  } catch (error) {
+    if (error.statusCode) {
+      return errorResponse(res, error.statusCode, error.message);
+    }
+    next(error);
+  }
+};
+
+export const leaveEvent = async (req, res, next) => {
+  try {
+    const eventId = req.params.id;
+    const userId = req.user?.id || req.user?.userId;
+    const result = await participantService.cancelEventRsvp(eventId, userId);
+    return successResponse(res, 200, 'Successfully left the event', result);
+  } catch (error) {
+    if (error.statusCode) {
+      return errorResponse(res, error.statusCode, error.message);
+    }
+    next(error);
+  }
+};

@@ -49,10 +49,11 @@ export const requireSocietyMember = async (req, res, next) => {
     const { societyId, society, membership, isOwner, effectiveRole, error } = await loadSocietyAccessContext(req);
     if (error) return errorResponse(res, ...error);
 
-    if (isOwner || req.user?.role === 'admin') {
+    // Global Admin / Super Admin or Creator/Owner has full access
+    if (isOwner || policy.isGlobalAdminUser(req.user)) {
       req.society = society;
-      req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true };
-      req.societyContext = { societyId, society, membership: req.societyMembership, role: 'owner', isOwner: true };
+      req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
+      req.societyContext = { societyId, society, membership: req.societyMembership, role: 'owner', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
       return next();
     }
 
@@ -89,10 +90,11 @@ export const requireSocietyRole = (allowedRoles = ['admin', 'committee']) => {
       const { societyId, society, membership, isOwner, effectiveRole, error } = await loadSocietyAccessContext(req);
       if (error) return errorResponse(res, ...error);
 
-      if (isOwner || req.user?.role === 'admin') {
+      // Global Admin / Super Admin or Creator/Owner has full access
+      if (isOwner || policy.isGlobalAdminUser(req.user)) {
         req.society = society;
-        req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true };
-        req.societyContext = { societyId, society, membership: req.societyMembership, role: 'owner', isOwner: true };
+        req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
+        req.societyContext = { societyId, society, membership: req.societyMembership, role: 'owner', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
         return next();
       }
 

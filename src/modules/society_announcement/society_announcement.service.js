@@ -18,7 +18,7 @@ export const createAnnouncement = async (societyId, userId, announcementData, me
       society_id: societyId,
       created_by: userId,
       title: announcementData.title,
-      message: announcementData.message,
+      message: announcementData.message || announcementData.content,
       priority: announcementData.priority || 'medium',
       category: announcementData.category || 'general',
       is_pinned: Boolean(announcementData.is_pinned),

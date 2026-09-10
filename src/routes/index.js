@@ -18,6 +18,7 @@ import serviceListingRoutes from '../modules/service_listing/service_listing.rou
 import serviceBookingRoutes from '../modules/service_booking/service_booking.routes.js';
 import serviceReviewRoutes from '../modules/service_review/service_review.routes.js';
 import societyProfileRoutes from '../modules/society_profile/society_profile.routes.js';
+import societiesRoutes from '../modules/society_profile/societies.routes.js';
 import societyMemberRoutes from '../modules/society_member/society_member.routes.js';
 import societyFacilityRoutes from '../modules/society_facility/society_facility.routes.js';
 import societyAnnouncementRoutes from '../modules/society_announcement/society_announcement.routes.js';
@@ -82,6 +83,8 @@ router.use('/service-provider-profile', serviceProviderProfileRoutes);
 router.use('/service-listing', serviceListingRoutes);
 router.use('/service-booking', serviceBookingRoutes);
 router.use('/service-review', serviceReviewRoutes);
+router.use('/societies', societiesRoutes);
+router.use('/society', societiesRoutes);
 router.use('/society-profile', societyProfileRoutes);
 router.use('/society-member', societyMemberRoutes);
 router.use('/society-facility', societyFacilityRoutes);

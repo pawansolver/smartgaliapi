@@ -180,7 +180,7 @@ export const schemas = {
   },
   invite: {
     params: Joi.object({ id: id.required() }),
-    body: Joi.object({ userIds: Joi.array().items(id).min(1).max(100).required() }),
+    body: Joi.object({ userIds: Joi.array().items(id).min(1).max(100), invitee_ids: Joi.array().items(id).min(1).max(100) }).or('userIds', 'invitee_ids'),
   },
   inviteable: {
     params: Joi.object({ id: id.required() }),

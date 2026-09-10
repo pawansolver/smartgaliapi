@@ -1,9 +1,48 @@
 import ServiceReview from './service_review.model.js';
 import ServiceBooking from '../service_booking/service_booking.model.js';
+import ServiceListing from '../service_listing/service_listing.model.js';
+import ServiceProviderProfile from '../service_provider_profile/service_provider_profile.model.js';
 import User from '../user/user.model.js';
+import { emitNotification } from '../notification/notification.service.js';
+import { logger } from '../../utils/logger.js';
 
 export const createReview = async (reviewData) => {
-  return await ServiceReview.create(reviewData);
+  const review = await ServiceReview.create(reviewData);
+
+  // Asynchronously notify provider of new customer review
+  (async () => {
+    try {
+      const booking = await ServiceBooking.findOne({
+        where: { id: review.booking_id, is_deleted: false },
+        include: [{
+          model: ServiceListing,
+          as: 'listing',
+          include: [{
+            model: ServiceProviderProfile,
+            as: 'provider',
+            attributes: ['id', 'user_id'],
+          }],
+        }],
+      });
+      const providerUserId = booking?.listing?.provider?.user_id;
+      if (providerUserId) {
+        await emitNotification({
+          recipientId: providerUserId,
+          actorId: review.user_id,
+          type: 'service_review',
+          title: 'New Service Review',
+          message: `You received a ${review.rating}-star review for "${booking.listing?.title || 'your service'}".`,
+          data: { target: 'review', bookingId: Number(booking.id), reviewId: Number(review.id) },
+          preferenceKey: 'booking_requests',
+          sendPush: true,
+        });
+      }
+    } catch (err) {
+      logger.error('REVIEW_NOTIF_ERROR', err.message);
+    }
+  })();
+
+  return review;
 };
 
 export const getAllReviews = async () => {

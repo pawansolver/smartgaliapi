@@ -21,6 +21,7 @@ import { createEvent as createOutboxEvent } from '../outbox/outbox.service.js';
 import { OUTBOX_EVENT_TYPES, OUTBOX_AGGREGATE_TYPES } from '../outbox/outbox.events.js';
 import { invalidateEventCaches } from '../event/event.cache.js';
 import { eventRsvpTotal } from '../../monitoring/metrics.js';
+import { emitNotification } from '../notification/notification.service.js';
 
 export const setEventRsvp = async (eventId, userId, newStatus) => {
   return await sequelize.transaction(async (t) => {
