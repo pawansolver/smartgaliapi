@@ -1,3 +1,4 @@
+import { Op } from 'sequelize';
 ﻿import ChatParticipant from '../modules/chat_participant/chat_participant.model.js';
 import Message from '../modules/message/message.model.js';
 import Chat from '../modules/chat/chat.model.js';
@@ -99,7 +100,7 @@ export const verifyChatMember = async (req, res, next) => {
             where: {
               event_id: chat.event_id,
               user_id: req.user.id,
-              status: ['going', 'interested'],
+              status: { [Op.in]: ['going', 'interested'] },
               is_deleted: false,
               is_active: true,
             },
@@ -128,7 +129,7 @@ export const verifyChatMember = async (req, res, next) => {
     if (!participant) return errorResponse(res, 403, 'You are not a member of this chat');
 
     // Reload full chat object if missing attributes
-    const chat = participant.chat || await Chat.findOne({
+    const chat = (participant.chat && participant.chat.event_id !== undefined) ? participant.chat : await Chat.findOne({
       where: { id: chatId, is_deleted: false },
       attributes: ['id', 'chat_type', 'community_id', 'event_id', 'created_by'],
     });
@@ -168,7 +169,7 @@ export const verifyChatMember = async (req, res, next) => {
           where: {
             event_id: chat.event_id,
             user_id: req.user.id,
-            status: ['going', 'interested'],
+            status: { [Op.in]: ['going', 'interested'] },
             is_deleted: false,
             is_active: true,
           },

@@ -1,4 +1,4 @@
-﻿import Redis from 'ioredis';
+import Redis from 'ioredis';
 import { setCacheClientRef, trackRedis } from '../monitoring/redisMetrics.js';
 import env from './env.js';
 
@@ -49,6 +49,11 @@ let cacheClient = null;
 let isRedisAvailable = false;
 
 export const createRedisClients = async () => {
+  if (process.env.REDIS_ENABLED === 'false') {
+    isRedisAvailable = false;
+    console.log('ℹ️  Redis disabled (REDIS_ENABLED=false). Running in local in-process mode.');
+    return { pubClient: null, subClient: null, cacheClient: null, isRedisAvailable: false };
+  }
   if (pubClient || subClient || cacheClient) {
     return { pubClient, subClient, cacheClient, isRedisAvailable };
   }
@@ -60,7 +65,11 @@ export const createRedisClients = async () => {
     cacheClient = pubClient.duplicate();
 
     for (const [name, client] of [['pubClient', pubClient], ['subClient', subClient], ['cacheClient', cacheClient]]) {
-      client.on('error', (err) => console.error(`Redis ${name} error:`, err.message));
+      client.on('error', (err) => {
+        if (isRedisAvailable) {
+          console.error(`Redis ${name} error:`, err.message);
+        }
+      });
     }
 
     // All adapter/cache clients must be connected before Socket.IO uses them.
@@ -68,11 +77,11 @@ export const createRedisClients = async () => {
     await pubClient.ping();
     isRedisAvailable = true;
 
-    console.log('âœ… Redis connected successfully.');
+    console.log('✅ Redis connected successfully.');
 
   } catch (err) {
     isRedisAvailable = false;
-    console.warn(`âš ï¸  Redis unavailable (${err.message}). Falling back to in-process mode. Multi-instance scaling will NOT work.`);
+    console.warn(`⚠️  Redis unavailable (${err.message}). Falling back to in-process mode. Multi-instance scaling will NOT work.`);
     await Promise.allSettled(
       [pubClient, subClient, cacheClient]
         .filter(Boolean)

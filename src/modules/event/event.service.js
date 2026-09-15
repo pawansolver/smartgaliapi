@@ -10,11 +10,13 @@ import { Op, Sequelize } from 'sequelize';
 import sequelize from '../../config/db.js';
 import Event, { EVENT_STATUS, EVENT_VISIBILITY } from './event.model.js';
 import EventCategory from '../event_category/event_category.model.js';
+import SocietyProfile from '../society_profile/society_profile.model.js';
+import SocietyMember from '../society_member/society_member.model.js';
+import ChatParticipant from '../chat_participant/chat_participant.model.js';
 import EventParticipant, { RSVP_STATUS } from '../event_participant/event_participant.model.js';
 import User from '../user/user.model.js';
 import Community from '../community/community.model.js';
 import Chat from '../chat/chat.model.js';
-import ChatParticipant from '../chat_participant/chat_participant.model.js';
 import { getIO } from '../../socket.js';
 import CommunityMember from '../communityMember/communityMember.model.js';
 import { canReadEvent, canUpdateEvent, canDeleteEvent, canCancelEvent } from './event.policy.js';
@@ -32,6 +34,32 @@ import {
 import { eventCreateTotal, eventViewTotal, eventCancelTotal, eventNearbySearchTotal } from '../../monitoring/metrics.js';
 
 export const createEvent = async (eventData, creatorId, user = null) => {
+  if (eventData.society_id) {
+    const society = await SocietyProfile.findOne({
+      where: { id: eventData.society_id, is_deleted: false, is_active: true },
+    });
+    if (!society) {
+      const error = new Error('Society not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const isGlobalAdmin = (user?.role === 'admin' || user?.userRole === 'admin' || user?.role === 'super_admin' || user?.userRole === 'super_admin');
+    const isOwner = Number(society.created_by) === Number(creatorId);
+
+    if (!isGlobalAdmin && !isOwner) {
+      const membership = await SocietyMember.findOne({
+        where: { society_id: eventData.society_id, user_id: creatorId, status: 'approved', is_deleted: false },
+      });
+
+      if (!membership || (membership.role !== 'admin' && membership.role !== 'committee')) {
+        const error = new Error('Forbidden: Only society admin or committee members can create society events');
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+  }
+
   if (eventData.community_id) {
     const community = await Community.findOne({
       where: { communityId: eventData.community_id, is_deleted: false, status: 'active' },
@@ -125,6 +153,8 @@ export const getUpcomingEvents = async ({
   categoryId,
   eventType,
   communityId,
+  societyId,
+  society_id,
   search,
   cursor,
   limit = 20,
@@ -138,6 +168,8 @@ export const getUpcomingEvents = async ({
   if (categoryId) where.category_id = categoryId;
   if (eventType) where.event_type = eventType;
   if (communityId) where.community_id = communityId;
+  const targetSocietyId = societyId || society_id;
+  if (targetSocietyId) where.society_id = targetSocietyId;
 
   if (search && search.trim().length > 0) {
     const term = '%' + search.trim() + '%';
@@ -316,7 +348,15 @@ export const getEventById = async (id, user = null) => {
     });
 
     if (!event) return null;
+    if (!event) return null;
     eventJson = event.toJSON ? event.toJSON() : event;
+    if (typeof eventJson.sub_events === 'string') {
+      try {
+        eventJson.sub_events = JSON.parse(eventJson.sub_events);
+      } catch (_) {
+        eventJson.sub_events = [];
+      }
+    }
     await setCachedEvent(id, eventJson);
   }
 
@@ -503,4 +543,124 @@ export const bulkSoftDeleteEvents = async (ids, deletedRemarks, updated_by) => {
     { is_deleted: true, deletedRemarks, updated_by, updatedAt: new Date() },
     { where: { id: ids, is_deleted: false } }
   );
+};
+
+// ── Enterprise Event Chat Lifecycle ───────────────────────────────────────────
+export const getOrCreateEventChat = async (eventId, user) => {
+  const event = await Event.findOne({
+    where: { id: eventId, is_deleted: false },
+  });
+  if (!event) {
+    const error = new Error('Event not found');
+    error.statusCode = 404;
+    error.status = 404;
+    throw error;
+  }
+
+  if (event.status === EVENT_STATUS.CANCELLED) {
+    const error = new Error('Chat is not available for cancelled events');
+    error.statusCode = 400;
+    error.status = 400;
+    throw error;
+  }
+
+  const userId = user?.id || user?.userId;
+
+  // Authorization check: creator, global admin, or active RSVP participant ('going' or 'interested')
+  const isCreator = event.created_by && Number(event.created_by) === Number(userId);
+  const isGlobalAdmin = ['admin', 'super_admin'].includes(user?.userRole ?? user?.role);
+  
+  let participant = null;
+  if (!isCreator && !isGlobalAdmin) {
+    participant = await EventParticipant.findOne({
+      where: {
+        event_id: eventId,
+        user_id: userId,
+        status: { [Op.in]: ['going', 'interested'] },
+        is_deleted: false,
+      },
+    });
+
+    if (!participant) {
+      const error = new Error('Active RSVP (Going or Interested) is required to access event chat');
+      error.statusCode = 403;
+    error.status = 403;
+      throw error;
+    }
+  }
+
+  // Idempotent: find existing Chat or create
+  let chat = await Chat.findOne({
+    where: { event_id: eventId, is_deleted: false },
+  });
+
+  if (!chat) {
+    chat = await Chat.create({
+      chat_type: 'event',
+      name: event.title,
+      event_id: event.id,
+      created_by: event.created_by || userId,
+      created_at: new Date(),
+    });
+  }
+
+  // Ensure current user is registered in ChatParticipant (handles reactivation & unique constraint safety)
+  const role = (isCreator || isGlobalAdmin) ? 'admin' : 'member';
+  const existingPart = await ChatParticipant.findOne({
+    where: { chat_id: chat.id, user_id: userId },
+  });
+
+  if (existingPart) {
+    if (existingPart.is_deleted || !existingPart.is_active || existingPart.role !== role) {
+      await existingPart.update({
+        role,
+        is_active: true,
+        is_deleted: false,
+        updatedAt: new Date(),
+      });
+    }
+  } else {
+    try {
+      await ChatParticipant.create({
+        chat_id: chat.id,
+        user_id: userId,
+        role,
+        is_active: true,
+        is_deleted: false,
+        joined_at: new Date(),
+        created_at: new Date(),
+      });
+    } catch (err) {
+      if (err.name === 'SequelizeUniqueConstraintError') {
+        await ChatParticipant.update(
+          {
+            role,
+            is_active: true,
+            is_deleted: false,
+            updatedAt: new Date(),
+          },
+          { where: { chat_id: chat.id, user_id: userId } }
+        );
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  return {
+    id: Number(chat.id),
+    name: chat.name || event.title,
+    chat_type: chat.chat_type,
+    event_id: Number(chat.event_id),
+    created_by: chat.created_by,
+  };
+};
+
+export const bulkCreateEvents = async (eventsList, creatorId, user = null) => {
+  const createdList = [];
+  for (const eventData of eventsList) {
+    const single = await createEvent(eventData, creatorId, user);
+    createdList.push(single);
+  }
+  return createdList;
 };

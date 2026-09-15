@@ -56,6 +56,18 @@ export const markNotificationRead = async (req, res, next) => {
   }
 };
 
+export const markNotificationUnread = async (req, res, next) => {
+  try {
+    const updated = await notificationService.markAsUnread(req.user.id, req.params.id);
+    if (!updated) {
+      return errorResponse(res, 404, 'Notification not found');
+    }
+    return successResponse(res, 200, 'Notification marked as unread', updated);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const markAllNotificationsRead = async (req, res, next) => {
   try {
     const updated = await notificationService.markAllAsRead(req.user.id);
@@ -109,7 +121,7 @@ export const updateNotification = async (req, res, next) => {
  */
 export const deleteNotification = async (req, res, next) => {
   try {
-    const { deletedRemarks } = req.body;
+    const { deletedRemarks } = req.body || {};
     const notification = await notificationService.softDeleteNotification(
       req.params.id,
       req.user.id,      // ownership: only owner can delete
@@ -133,7 +145,7 @@ export const deleteNotification = async (req, res, next) => {
  */
 export const bulkDeleteNotifications = async (req, res, next) => {
   try {
-    const { ids, deletedRemarks } = req.body;
+    const { ids, deletedRemarks } = req.body || {};
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return errorResponse(res, 400, 'Please provide a non-empty array of ids');
     }

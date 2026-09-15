@@ -315,6 +315,34 @@ const handleSocietyEvent = async (event, context = {}) => {
     });
   }
 
+  // 3b. Complaint Assigned -> Notify Assignee and Resident
+  if (event.event_type === 'society.complaint_assigned' || event.event_type === OUTBOX_EVENT_TYPES.SOCIETY_COMPLAINT_ASSIGNED) {
+    if (payload.assignedTo) {
+      if (io) io.to(`user:${payload.assignedTo}`).emit('society:complaint_assigned', payload);
+      await processorDeps.emitNotification({
+        recipientId: payload.assignedTo,
+        actorId: payload.assignedBy,
+        type: 'info',
+        title: 'New Complaint Assigned',
+        message: `You have been assigned complaint #CMP-${String(payload.complaintId).padStart(4, '0')}.`,
+        data: { societyId: Number(societyId), complaintId: payload.complaintId, target: 'society_complaint' },
+        preferenceKey: 'complaint_updates',
+      });
+    }
+    if (payload.creatorUserId) {
+      if (io) io.to(`user:${payload.creatorUserId}`).emit('society:complaint_updated', payload);
+      await processorDeps.emitNotification({
+        recipientId: payload.creatorUserId,
+        actorId: payload.assignedBy,
+        type: 'info',
+        title: 'Complaint Assigned',
+        message: `Your complaint #CMP-${String(payload.complaintId).padStart(4, '0')} has been assigned to staff.`,
+        data: { societyId: Number(societyId), complaintId: payload.complaintId, target: 'society_complaint' },
+        preferenceKey: 'complaint_updates',
+      });
+    }
+  }
+
   // 4. Poll Created -> Notify Members
   if (event.event_type === 'society.poll_created') {
     const members = await SocietyMember.findAll({
@@ -398,6 +426,7 @@ const handlers = {
   'society.announcement_created': handleSocietyEvent,
   'society.complaint_created': handleSocietyEvent,
   'society.complaint_status_changed': handleSocietyEvent,
+  'society.complaint_assigned': handleSocietyEvent,
   'society.visitor_created': handleSocietyEvent,
   'society.visitor_arrived': handleSocietyEvent,
   'society.visitor_approved': handleSocietyEvent,

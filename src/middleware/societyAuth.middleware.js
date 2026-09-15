@@ -4,7 +4,7 @@ import { errorResponse } from '../utils/response.js';
 import * as policy from '../modules/society_profile/society.policy.js';
 
 export const resolveSocietyId = (req) =>
-  req.params.societyId || req.params.id || req.body?.society_id || req.body?.societyId || req.query?.society_id || req.query?.societyId;
+  req.headers?.['x-society-id'] || req.query?.society_id || req.query?.societyId || req.body?.society_id || req.body?.societyId || req.params.societyId || req.params.id;
 
 /**
  * Loads and caches the active Society and caller's SocietyMember context on the request.

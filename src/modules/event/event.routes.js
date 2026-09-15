@@ -7,10 +7,14 @@
 
 import express from 'express';
 import * as eventController from './event.controller.js';
+import * as eventInvitationController from '../event_invitation/event_invitation.controller.js';
+import eventInvitationRoutes from '../event_invitation/event_invitation.routes.js';
+import { respondInvitationSchema } from './event.validation.js';
 import { authenticate, optionalAuthenticate } from '../../middleware/auth.middleware.js';
 import { validateBody, validateQuery, validateParams } from '../../middleware/validation.middleware.js';
 import {
   createEventSchema,
+  bulkCreateEventSchema,
   updateEventSchema,
   rsvpSchema,
   nearbyQuerySchema,
@@ -33,6 +37,8 @@ router.get('/upcoming', eventReadLimiter, optionalAuthenticate, validateQuery(up
 router.get('/nearby', eventNearbyLimiter, optionalAuthenticate, validateQuery(nearbyQuerySchema), eventController.getNearbyEvents);
 router.get('/my-rsvps', authenticate, eventReadLimiter, eventController.getMyRsvps);
 router.get('/my', authenticate, eventReadLimiter, eventController.getMyRsvps); // PRD Sec 18.6
+router.get('/invitations/my', authenticate, eventReadLimiter, eventInvitationController.getMyInvitations);
+router.put('/invitations/:id/respond', authenticate, eventCreateLimiter, validateBody(respondInvitationSchema), eventInvitationController.respondToInvitation);
 
 // ── CRUD Endpoints ───────────────────────────────────────────────────────────
 router.get('/', eventReadLimiter, optionalAuthenticate, validateQuery(upcomingQuerySchema), eventController.getUpcomingEvents);
@@ -41,7 +47,7 @@ router.post(
   '/',
   authenticate,
   eventCreateLimiter,
-  uploadImage('event').single('cover_image'),
+  uploadImage('event').any(),
   validateBody(createEventSchema),
   eventController.createEvent
 );
@@ -59,7 +65,7 @@ router.put(
   authenticate,
   eventCreateLimiter,
   validateParams(eventIdParamSchema),
-  uploadImage('event').single('cover_image'),
+  uploadImage('event').any(),
   validateBody(updateEventSchema),
   eventController.updateEvent
 );
@@ -112,6 +118,24 @@ router.post(
   validateParams(eventIdParamSchema),
   eventController.joinEvent
 );
+
+// ── Event Chat Lifecycle ──────────────────────────────────────────────────
+router.get(
+  '/:id/chat',
+  authenticate,
+  validateParams(eventIdParamSchema),
+  eventController.getEventChat
+);
+
+router.post(
+  '/:id/chat',
+  authenticate,
+  validateParams(eventIdParamSchema),
+  eventController.getEventChat
+);
+
+// ── Event Invitations Sub-router ─────────────────────────────────────────────
+router.use('/:id/invitations', eventInvitationRoutes);
 
 router.post(
   '/:id/leave',

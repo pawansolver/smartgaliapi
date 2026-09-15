@@ -54,6 +54,22 @@ const SocietyComplaint = sequelize.define('SocietyComplaint', {
     defaultValue: 'general',
     allowNull: false,
   },
+  sub_category: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  location_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
+  flat_no: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
+  exact_location: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
   priority: {
     type: DataTypes.ENUM('low', 'medium', 'high', 'urgent'),
     defaultValue: 'medium',

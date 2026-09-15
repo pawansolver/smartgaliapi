@@ -28,6 +28,10 @@ const buildBullOptions = () => ({
   maxRetriesPerRequest: null,
   enableReadyCheck: true,
   lazyConnect: false,
+  retryStrategy: (times) => {
+    if (times > 3) return null;
+    return Math.min(times * 100, 1000);
+  },
 });
 
 let sharedConnection = null;

@@ -189,6 +189,32 @@ export const updateVisitorStatus = async (id, societyId, { status, remark }, act
       throw err;
     }
 
+    
+    // Role and host authorization check
+    const member = await SocietyMember.findOne({
+      where: { society_id: societyId, user_id: actorUserId, is_deleted: false, status: 'active' },
+      transaction,
+    });
+    const role = member ? member.role : 'resident';
+    const isStaffOrAdmin = ['admin', 'committee', 'security'].includes(role) || meta.isGlobalAdmin;
+
+    // Gate operations (at_gate, checked_in, checked_out) are strictly for security/staff/admin
+    if (['at_gate', 'checked_in', 'checked_out'].includes(status) && !isStaffOrAdmin) {
+      const err = new Error('Only security staff or society admins can perform gate check-in/out');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Flat-level approval/denial (approved, denied) can be done by host resident OR security/staff/admin
+    if (['approved', 'denied'].includes(status)) {
+      const isHost = Number(visitor.user_id) === Number(actorUserId);
+      if (!isStaffOrAdmin && !isHost) {
+        const err = new Error('You are not authorized to approve or deny visitors for another resident');
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+
     const updatePayload = {
       status,
       remark: remark || visitor.remark,

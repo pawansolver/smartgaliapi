@@ -15,8 +15,24 @@ import { normalizeMediaUrl } from '../../utils/mediaUrl.js';
 export const createEvent = async (req, res, next) => {
   try {
     const data = { ...req.body };
-    if (req.file) {
-      data.cover_image = getImageUrl(req, 'event', req.file.filename);
+    if (typeof data.sub_events === 'string') {
+      try {
+        data.sub_events = JSON.parse(data.sub_events);
+      } catch (_) {
+        data.sub_events = [];
+      }
+    }
+        // Process main cover image & sub-event banner images
+    const files = req.files ? (Array.isArray(req.files) ? req.files : Object.values(req.files).flat()) : (req.file ? [req.file] : []);
+    for (const file of files) {
+      if (file.fieldname === 'cover_image') {
+        data.cover_image = getImageUrl(req, file, 'event');
+      } else if (file.fieldname.startsWith('sub_event_cover_')) {
+        const idx = parseInt(file.fieldname.replace('sub_event_cover_', ''), 10);
+        if (!isNaN(idx) && Array.isArray(data.sub_events) && data.sub_events[idx]) {
+          data.sub_events[idx].cover_image = getImageUrl(req, file, 'event');
+        }
+      }
     }
     const creatorId = req.user?.id || req.user?.userId;
     const event = await eventService.createEvent(data, creatorId, req.user);
@@ -31,11 +47,12 @@ export const createEvent = async (req, res, next) => {
 
 export const getUpcomingEvents = async (req, res, next) => {
   try {
-    const { category_id, event_type, community_id, search, cursor, limit } = req.query;
+    const { category_id, event_type, community_id, society_id, societyId, search, cursor, limit } = req.query;
     const result = await eventService.getUpcomingEvents({
       categoryId: category_id,
       eventType: event_type,
       communityId: community_id,
+      societyId: society_id || societyId,
       search,
       cursor,
       limit,
@@ -84,8 +101,24 @@ export const getEventById = async (req, res, next) => {
 export const updateEvent = async (req, res, next) => {
   try {
     const data = { ...req.body };
-    if (req.file) {
-      data.cover_image = getImageUrl(req, 'event', req.file.filename);
+    if (typeof data.sub_events === 'string') {
+      try {
+        data.sub_events = JSON.parse(data.sub_events);
+      } catch (_) {
+        data.sub_events = [];
+      }
+    }
+        // Process main cover image & sub-event banner images
+    const files = req.files ? (Array.isArray(req.files) ? req.files : Object.values(req.files).flat()) : (req.file ? [req.file] : []);
+    for (const file of files) {
+      if (file.fieldname === 'cover_image') {
+        data.cover_image = getImageUrl(req, file, 'event');
+      } else if (file.fieldname.startsWith('sub_event_cover_')) {
+        const idx = parseInt(file.fieldname.replace('sub_event_cover_', ''), 10);
+        if (!isNaN(idx) && Array.isArray(data.sub_events) && data.sub_events[idx]) {
+          data.sub_events[idx].cover_image = getImageUrl(req, file, 'event');
+        }
+      }
     }
     const event = await eventService.updateEvent(req.params.id, data, req.user);
     if (!event) {
@@ -227,6 +260,30 @@ export const leaveEvent = async (req, res, next) => {
     const userId = req.user?.id || req.user?.userId;
     const result = await participantService.cancelEventRsvp(eventId, userId);
     return successResponse(res, 200, 'Successfully left the event', result);
+  } catch (error) {
+    if (error.statusCode) {
+      return errorResponse(res, error.statusCode, error.message);
+    }
+    next(error);
+  }
+};
+
+export const getEventChat = async (req, res, next) => {
+  try {
+    const eventId = req.params.id;
+    const chat = await eventService.getOrCreateEventChat(eventId, req.user);
+    return successResponse(res, 200, 'Event chat retrieved successfully', chat);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const bulkCreateEvents = async (req, res, next) => {
+  try {
+    const { events } = req.body;
+    const creatorId = req.user?.id || req.user?.userId;
+    const createdEvents = await eventService.bulkCreateEvents(events, creatorId, req.user);
+    return successResponse(res, 201, 'Events created successfully in bulk', createdEvents);
   } catch (error) {
     if (error.statusCode) {
       return errorResponse(res, error.statusCode, error.message);

@@ -26,6 +26,8 @@ import societyComplaintRoutes from '../modules/society_complaint/society_complai
 import societyVisitorRoutes from '../modules/society_visitor/society_visitor.routes.js';
 import societyParkingRoutes from '../modules/society_parking/society_parking.routes.js';
 import societyPollRoutes from '../modules/society_poll/society_poll.routes.js';
+import societyDocumentRoutes from '../modules/society_document/society_document.routes.js';
+import societyEmergencyContactRoutes from '../modules/society_emergency_contact/society_emergency_contact.routes.js';
 import mediaFileRoutes from '../modules/media_file/media_file.routes.js';
 import postRoutes from '../modules/post/post.routes.js';
 import feedRoutes from '../modules/feed/feed.routes.js';
@@ -36,6 +38,7 @@ import savedPostRoutes from '../modules/saved_post/saved_post.routes.js';
 import eventRoutes from '../modules/event/event.routes.js';
 import eventCategoryRoutes from '../modules/event_category/event_category.routes.js';
 import eventParticipantRoutes from '../modules/event_participant/event_participant.routes.js';
+import eventInvitationRoutes from '../modules/event_invitation/event_invitation.routes.js';
 import followRoutes from '../modules/follow/follow.routes.js';
 import userFollowRoutes from '../modules/follow/follow.routes.js'; // PRD: /users/follow, /users/followers, /users/following, /users/unfollow/:id
 import chatRoutes from '../modules/chat/chat.routes.js';
@@ -93,6 +96,10 @@ router.use('/society-complaint', societyComplaintRoutes);
 router.use('/society-visitor', societyVisitorRoutes);
 router.use('/society-parking', societyParkingRoutes);
 router.use('/society-poll', societyPollRoutes);
+router.use('/society-document', societyDocumentRoutes);
+router.use('/society-documents', societyDocumentRoutes);
+router.use('/society-emergency-contact', societyEmergencyContactRoutes);
+router.use('/society-emergency-contacts', societyEmergencyContactRoutes);
 router.use('/media-file', mediaFileRoutes);
 router.use('/post', postRoutes);
 router.use('/feed', feedRoutes);
@@ -106,6 +113,8 @@ router.use('/event-categories', eventCategoryRoutes);
 router.use('/event-participants', eventParticipantRoutes);
 router.use('/event-category', eventCategoryRoutes);
 router.use('/event-participant', eventParticipantRoutes);
+router.use('/event-invitation', eventInvitationRoutes);
+router.use('/event-invitations', eventInvitationRoutes);
 router.use('/follow', followRoutes); // legacy admin CRUD routes
 router.use('/users', userFollowRoutes);  // PRD Phase 8: follow/followers/following/unfollow
 router.use('/chat', chatRoutes);

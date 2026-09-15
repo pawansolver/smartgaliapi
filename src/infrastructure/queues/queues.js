@@ -1,3 +1,4 @@
+import { getIsRedisAvailable } from '../../config/redis.js';
 ﻿import { Queue } from 'bullmq';
 import { logger } from '../../utils/logger.js';
 import {
@@ -14,6 +15,9 @@ let chatEventsQueue = null;
  * Lazily create the chat-events Queue (producer side).
  */
 export const getChatEventsQueue = () => {
+  if (!getIsRedisAvailable()) {
+    return null;
+  }
   if (!chatEventsQueue) {
     chatEventsQueue = new Queue(queueConfig.chatQueueName, {
       connection: getSharedBullConnection(),
@@ -34,6 +38,9 @@ export const getChatEventsQueue = () => {
  * @returns {{ job, jobId, duplicated: boolean }}
  */
 export const enqueueOutboxJob = async ({ outboxEventId, eventType }) => {
+  if (!getIsRedisAvailable()) {
+    return { job: null, jobId: null, duplicated: false };
+  }
   const queue = getChatEventsQueue();
   const jobId = buildOutboxJobId(outboxEventId);
 
@@ -66,7 +73,23 @@ export const enqueueOutboxJob = async ({ outboxEventId, eventType }) => {
  * Lightweight internal queue health (not a public admin API).
  */
 export const getChatQueueHealth = async () => {
+  if (!getIsRedisAvailable()) {
+    return {
+      queue: queueConfig.chatQueueName,
+      prefix: queueConfig.prefix,
+      counts: { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0, paused: 0 },
+      status: 'unavailable',
+    };
+  }
   const queue = getChatEventsQueue();
+  if (!queue) {
+    return {
+      queue: queueConfig.chatQueueName,
+      prefix: queueConfig.prefix,
+      counts: { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0, paused: 0 },
+      status: 'unavailable',
+    };
+  }
   const counts = await queue.getJobCounts(
     'waiting',
     'active',

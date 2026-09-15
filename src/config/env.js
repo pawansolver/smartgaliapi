@@ -1,8 +1,12 @@
+import fs from 'fs';
 import dotenv from 'dotenv';
 import path from 'path';
 
 // Load environment variables from .env file
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+import { fileURLToPath } from 'url';
+const __envDir = path.dirname(fileURLToPath(import.meta.url));
+const __envFile = path.resolve(__envDir, '../../.env');
+dotenv.config({ path: fs.existsSync(__envFile) ? __envFile : path.resolve(process.cwd(), '.env') });
 
 const nodeEnv = process.env.NODE_ENV || 'development';
 const isProduction = nodeEnv === 'production';

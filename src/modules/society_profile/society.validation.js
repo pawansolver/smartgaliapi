@@ -89,6 +89,10 @@ export const createAnnouncementSchema = Joi.object({
   content: Joi.string().trim().max(10000),
   priority: Joi.string().valid(...Object.values(ANNOUNCEMENT_PRIORITY)).default(ANNOUNCEMENT_PRIORITY.MEDIUM),
   category: Joi.string().trim().max(100).default('general'),
+  sub_category: Joi.string().trim().max(100).allow('', null).optional(),
+  location_type: Joi.string().trim().max(50).allow('', null).optional(),
+  flat_no: Joi.string().trim().max(50).allow('', null).optional(),
+  exact_location: Joi.string().trim().max(255).allow('', null).optional(),
   is_pinned: Joi.boolean().default(false),
   expires_at: Joi.date().iso().allow(null).optional(),
 });
@@ -98,6 +102,10 @@ export const updateAnnouncementSchema = Joi.object({
   message: Joi.string().trim().max(10000).optional(),
   priority: Joi.string().valid(...Object.values(ANNOUNCEMENT_PRIORITY)).optional(),
   category: Joi.string().trim().max(100).optional(),
+  sub_category: Joi.string().trim().max(100).allow('', null).optional(),
+  location_type: Joi.string().trim().max(50).allow('', null).optional(),
+  flat_no: Joi.string().trim().max(50).allow('', null).optional(),
+  exact_location: Joi.string().trim().max(255).allow('', null).optional(),
   is_pinned: Joi.boolean().optional(),
   expires_at: Joi.date().iso().allow(null).optional(),
 }).min(1);
@@ -117,6 +125,10 @@ export const createComplaintSchema = Joi.object({
   title: Joi.string().trim().min(3).max(255).required(),
   description: Joi.string().trim().max(10000).required(),
   category: Joi.string().trim().max(100).default('general'),
+  sub_category: Joi.string().trim().max(100).allow('', null).optional(),
+  location_type: Joi.string().trim().max(50).allow('', null).optional(),
+  flat_no: Joi.string().trim().max(50).allow('', null).optional(),
+  exact_location: Joi.string().trim().max(255).allow('', null).optional(),
   priority: Joi.string().valid(...Object.values(COMPLAINT_PRIORITY)).default(COMPLAINT_PRIORITY.MEDIUM),
 });
 
@@ -124,6 +136,10 @@ export const updateComplaintSchema = Joi.object({
   title: Joi.string().trim().min(3).max(255).optional(),
   description: Joi.string().trim().max(10000).optional(),
   category: Joi.string().trim().max(100).optional(),
+  sub_category: Joi.string().trim().max(100).allow('', null).optional(),
+  location_type: Joi.string().trim().max(50).allow('', null).optional(),
+  flat_no: Joi.string().trim().max(50).allow('', null).optional(),
+  exact_location: Joi.string().trim().max(255).allow('', null).optional(),
   priority: Joi.string().valid(...Object.values(COMPLAINT_PRIORITY)).optional(),
   status: Joi.string().valid(...Object.values(COMPLAINT_STATUS)).optional(),
   assigned_to: id.allow(null).optional(),
@@ -144,6 +160,9 @@ export const listComplaintQuerySchema = Joi.object({
   status: Joi.string().valid(...Object.values(COMPLAINT_STATUS)).optional(),
   priority: Joi.string().valid(...Object.values(COMPLAINT_PRIORITY)).optional(),
   category: Joi.string().trim().max(100).optional(),
+  location_type: Joi.string().trim().max(50).allow('', null).optional(),
+  assigned: Joi.string().valid('all', 'assigned', 'unassigned').optional(),
+  search: Joi.string().trim().max(100).allow('', null).optional(),
   my_only: Joi.boolean().default(false),
 });
 
@@ -257,4 +276,51 @@ export const listVisitorQuerySchema = Joi.object({
   society_id: id.optional(),
   status: Joi.string().valid(...Object.values(VISITOR_STATUS)).optional(),
   flat_no: Joi.string().trim().max(50).optional(),
+});
+// ── Society Document Schemas ───────────────────────────────────────────────────
+export const createDocumentSchema = Joi.object({
+  society_id: id.optional(),
+  title: Joi.string().trim().min(2).max(255).required(),
+  description: Joi.string().trim().allow('', null).optional(),
+  category: Joi.string().trim().max(50).default('general').optional(),
+  file_url: Joi.string().trim().max(500).optional(),
+  file_type: Joi.string().trim().max(50).optional(),
+  file_size: Joi.number().integer().min(0).optional(),
+});
+
+export const updateDocumentSchema = Joi.object({
+  title: Joi.string().trim().min(2).max(255).optional(),
+  description: Joi.string().trim().allow('', null).optional(),
+  category: Joi.string().trim().max(50).optional(),
+}).min(1);
+
+export const listDocumentQuerySchema = Joi.object({
+  ...pageQuery,
+  society_id: id.optional(),
+  category: Joi.string().trim().optional(),
+  search: Joi.string().trim().allow('', null).optional(),
+});
+
+// ── Society Emergency Contact Schemas ──────────────────────────────────────────
+export const createEmergencyContactSchema = Joi.object({
+  society_id: id.optional(),
+  name: Joi.string().trim().min(2).max(150).required(),
+  designation: Joi.string().trim().max(150).allow('', null).optional(),
+  phone: Joi.string().trim().min(3).max(30).required(),
+  alt_phone: Joi.string().trim().max(30).allow('', null).optional(),
+  category: Joi.string().trim().max(50).default('general').optional(),
+});
+
+export const updateEmergencyContactSchema = Joi.object({
+  name: Joi.string().trim().min(2).max(150).optional(),
+  designation: Joi.string().trim().max(150).allow('', null).optional(),
+  phone: Joi.string().trim().min(3).max(30).optional(),
+  alt_phone: Joi.string().trim().max(30).allow('', null).optional(),
+  category: Joi.string().trim().max(50).optional(),
+}).min(1);
+
+export const emergencyAlertSchema = Joi.object({
+  title: Joi.string().trim().min(3).max(200).required(),
+  message: Joi.string().trim().min(5).max(1000).required(),
+  severity: Joi.string().valid('critical', 'high', 'medium', 'low').default('critical'),
 });

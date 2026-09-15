@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "enterprise-nodejs-boilerplate",
   "version": "1.0.0",
   "description": "Enterprise eCommerce Boilerplate with Node.js, Express, Sequelize, and ES6 Modules",
@@ -17,6 +17,7 @@
     "load:feed:all": "node src/tests/load/run_benchmarks.js",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "kill:port": "npx kill-port 5000",
     "worker": "node src/workers/index.js",
     "worker:dev": "nodemon src/workers/index.js",
     "setup:profile": "node scripts/setupProfileModule.js",

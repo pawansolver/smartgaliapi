@@ -35,6 +35,16 @@ const startServer = async () => {
     app.set('io', io);
 
     // 5. Start listening
+    httpServer.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${env.port} is already in use by another process.`);
+        console.error(`👉 Run 'npm run kill:port' or terminate the process using port ${env.port}.`);
+      } else {
+        console.error('❌ Server HTTP error:', err.message);
+      }
+      process.exit(1);
+    });
+
     httpServer.listen(env.port, '0.0.0.0', () => {
       console.log(`🌐 Localhost: http://localhost:${env.port}`);
       console.log(`📱 LAN Network (for Phone): http://192.168.31.15:${env.port}`);
@@ -90,4 +100,5 @@ process.on('unhandledRejection', (err) => {
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
   console.error(`Uncaught Exception: ${err.message}`);
+  process.exit(1);
 });

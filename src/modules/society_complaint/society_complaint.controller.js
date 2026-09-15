@@ -105,3 +105,25 @@ export const deleteComplaint = async (req, res, next) => {
 export const bulkDeleteComplaints = async (req, res, next) => {
   return deleteComplaint(req, res, next);
 };
+
+export const getComplaintSummary = async (req, res, next) => {
+  try {
+    const societyId = req.query.society_id || req.societyContext?.societyId;
+    if (!societyId) return errorResponse(res, 400, 'society_id is required');
+    const summary = await societyComplaintService.getComplaintSummary(societyId);
+    return successResponse(res, 200, 'Complaint summary fetched successfully', summary);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getComplaintHistory = async (req, res, next) => {
+  try {
+    const societyId = req.query.society_id || req.societyContext?.societyId;
+    const { id } = req.params;
+    const history = await societyComplaintService.getComplaintHistory(id, societyId);
+    return successResponse(res, 200, 'Complaint history fetched successfully', history);
+  } catch (error) {
+    next(error);
+  }
+};

@@ -119,6 +119,16 @@ export const markAsRead = async (userId, id) => {
 };
 
 /** Mark every unread notification for the caller as read in one write. */
+/** Mark a single notification as unread. */
+export const markAsUnread = async (userId, id) => {
+  const notification = await Notification.findOne({
+    where: { id, user_id: userId, is_deleted: false },
+  });
+  if (!notification) return null;
+  await notification.update({ is_read: false, updated_by: userId, updatedAt: new Date() });
+  return serializeNotification(notification);
+};
+
 export const markAllAsRead = async (userId) => {
   const [affected] = await Notification.update(
     { is_read: true, updated_by: userId, updatedAt: new Date() },

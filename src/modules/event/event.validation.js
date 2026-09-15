@@ -2,6 +2,34 @@ import Joi from 'joi';
 import { EVENT_STATUS, EVENT_VISIBILITY, EVENT_TYPE } from './event.model.js';
 import { RSVP_STATUS } from '../event_participant/event_participant.model.js';
 
+export const subEventItemSchema = Joi.object({
+  id: Joi.alternatives().try(Joi.string(), Joi.number()).optional(),
+  title: Joi.string().trim().min(1).max(255).required().messages({
+    'string.empty': 'Sub-event title is required',
+  }),
+  description: Joi.string().trim().max(3000).allow('', null).optional(),
+  date: Joi.string().trim().allow('', null).optional(),
+  start_time: Joi.string().trim().allow('', null).optional(),
+  end_time: Joi.string().trim().allow('', null).optional(),
+  venue: Joi.string().trim().max(255).allow('', null).optional(),
+  location: Joi.string().trim().max(255).allow('', null).optional(),
+  location_name: Joi.string().trim().max(255).allow('', null).optional(),
+  address: Joi.string().trim().max(1000).allow('', null).optional(),
+  event_type: Joi.string().valid('offline', 'online', 'hybrid').default('offline').optional(),
+  speaker_or_host: Joi.string().trim().max(255).allow('', null).optional(),
+  activity_type: Joi.string().trim().max(100).default('general').allow('', null).optional(),
+  capacity: Joi.number().integer().min(0).allow(null).optional(),
+  max_participants: Joi.number().integer().min(0).allow(null).optional(),
+  cover_image: Joi.string().trim().allow('', null).optional(),
+  is_registration_required: Joi.boolean().default(false).optional(),
+  status: Joi.string().valid('scheduled', 'ongoing', 'completed', 'cancelled').default('scheduled').optional(),
+});
+
+export const subEventsValidation = Joi.alternatives().try(
+  Joi.array().items(subEventItemSchema),
+  Joi.string().allow('', null)
+);
+
 export const createEventSchema = Joi.object({
   title: Joi.string().trim().min(3).max(255).required().messages({
     'string.empty': 'Event title is required',
@@ -10,6 +38,7 @@ export const createEventSchema = Joi.object({
   }),
   description: Joi.string().trim().max(5000).allow('', null).optional(),
   category_id: Joi.number().integer().positive().allow(null).optional(),
+  society_id: Joi.number().integer().positive().allow(null).optional(),
   community_id: Joi.number().integer().positive().allow(null).optional(),
   event_type: Joi.string().valid(...Object.values(EVENT_TYPE)).default(EVENT_TYPE.OFFLINE),
   visibility: Joi.string().valid(...Object.values(EVENT_VISIBILITY)).default(EVENT_VISIBILITY.PUBLIC),
@@ -28,6 +57,7 @@ export const createEventSchema = Joi.object({
   longitude: Joi.number().min(-180).max(180).allow(null).optional(),
   max_participants: Joi.number().integer().min(1).max(1000000).allow(null).optional(),
   cover_image: Joi.string().trim().allow('', null).optional(),
+  sub_events: subEventsValidation.optional(),
 });
 
 export const updateEventSchema = Joi.object({
@@ -46,7 +76,15 @@ export const updateEventSchema = Joi.object({
   longitude: Joi.number().min(-180).max(180).allow(null).optional(),
   max_participants: Joi.number().integer().min(1).max(1000000).allow(null).optional(),
   cover_image: Joi.string().trim().allow('', null).optional(),
+  sub_events: subEventsValidation.optional(),
 }).min(1);
+
+export const bulkCreateEventSchema = Joi.object({
+  events: Joi.array().items(createEventSchema).min(1).max(50).required().messages({
+    'array.min': 'At least one event must be provided in events array',
+    'array.max': 'Cannot create more than 50 events in a single batch',
+  }),
+});
 
 export const rsvpSchema = Joi.object({
   status: Joi.string().valid(...Object.values(RSVP_STATUS)).required().messages({
@@ -74,6 +112,7 @@ export const upcomingQuerySchema = Joi.object({
   event_type: Joi.string().valid(...Object.values(EVENT_TYPE)).optional(),
   community_id: Joi.number().integer().positive().optional(),
   search: Joi.string().trim().max(100).allow('', null).optional(),
+  society_id: Joi.number().integer().positive().optional(),
   cursor: Joi.string().allow('', null).optional(),
   limit: Joi.number().integer().min(1).max(100).default(20),
 });
@@ -81,5 +120,26 @@ export const upcomingQuerySchema = Joi.object({
 export const eventIdParamSchema = Joi.object({
   id: Joi.number().integer().positive().required().messages({
     'number.base': 'Event ID must be a positive integer',
+  }),
+});
+
+// ── Event Invitation Schemas ─────────────────────────────────────────────────
+export const createInvitationSchema = Joi.object({
+  userIds: Joi.array().items(Joi.number().integer().positive()).min(1).max(50).messages({
+    'array.min': 'At least one user must be selected for invitation',
+  }),
+  user_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(50).messages({
+    'array.min': 'At least one user must be selected for invitation',
+  }),
+  eventId: Joi.number().integer().positive(),
+  event_id: Joi.number().integer().positive(),
+}).or('userIds', 'user_ids').messages({
+  'object.missing': 'At least userIds or user_ids must be provided',
+});
+
+export const respondInvitationSchema = Joi.object({
+  status: Joi.string().valid('accepted', 'declined').required().messages({
+    'any.only': 'Status must be accepted or declined',
+    'any.required': 'Response status is required',
   }),
 });

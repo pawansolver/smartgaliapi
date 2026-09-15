@@ -22,6 +22,17 @@ import * as societyMemberController from '../society_member/society_member.contr
 import * as societyMemberService from '../society_member/society_member.service.js';
 import * as societyAnnouncementController from '../society_announcement/society_announcement.controller.js';
 import * as societyComplaintController from '../society_complaint/society_complaint.controller.js';
+import * as societyDocumentController from '../society_document/society_document.controller.js';
+import * as societyEmergencyContactController from '../society_emergency_contact/society_emergency_contact.controller.js';
+import * as eventController from '../event/event.controller.js';
+import { uploadSocietyDocument } from '../../utils/fileUpload.js';
+import {
+  createDocumentSchema,
+  createEmergencyContactSchema,
+  emergencyAlertSchema,
+} from './society.validation.js';
+import { createEventSchema } from '../event/event.validation.js';
+import { uploadImage } from '../../utils/fileUpload.js';
 import SocietyMember from '../society_member/society_member.model.js';
 import SocietyComplaint from '../society_complaint/society_complaint.model.js';
 import { authenticate, optionalAuthenticate } from '../../middleware/auth.middleware.js';
@@ -60,13 +71,17 @@ router.put(
       if (complaint) {
         req.body.society_id = complaint.society_id;
         req.params.societyId = complaint.society_id;
+        const actorUserId = req.user?.id || req.user?.userId;
+        if (Number(complaint.user_id) === Number(actorUserId) && req.body?.status === 'closed') {
+          req.isCreatorClosing = true;
+          return next();
+        }
       }
-      return next();
+      return requireSocietyRole(['admin', 'committee'])(req, res, next);
     } catch (err) {
       return next(err);
     }
   },
-  requireSocietyRole(['admin', 'committee']),
   validateBody(updateComplaintStatusSchema),
   societyComplaintController.updateComplaintStatus
 );
@@ -245,6 +260,117 @@ router.post(
   requireSocietyMember,
   validateBody(createComplaintSchema),
   societyComplaintController.createComplaint
+);
+
+// ---------------------------------------------------------------------------
+// PRD 18.4: Society Documents
+// ---------------------------------------------------------------------------
+router.get(
+  '/:id/documents',
+  authenticate,
+  societyReadLimiter,
+  validateParams(idParamSchema),
+  requireSocietyMember,
+  (req, res, next) => {
+    req.query.society_id = req.params.id;
+    return societyDocumentController.getAllDocuments(req, res, next);
+  }
+);
+
+router.post(
+  '/:id/documents',
+  authenticate,
+  societyMutationLimiter,
+  validateParams(idParamSchema),
+  requireSocietyRole(['admin', 'committee']),
+  uploadSocietyDocument('society').single('file'),
+  validateBody(createDocumentSchema),
+  (req, res, next) => {
+    req.body.society_id = Number(req.params.id);
+    return societyDocumentController.createDocument(req, res, next);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// PRD 21.5 / 22.5: Society Emergency Contacts & Alert Broadcast
+// ---------------------------------------------------------------------------
+router.get(
+  '/:id/emergency-contacts',
+  authenticate,
+  societyReadLimiter,
+  validateParams(idParamSchema),
+  requireSocietyMember,
+  (req, res, next) => {
+    req.query.society_id = req.params.id;
+    return societyEmergencyContactController.getAllEmergencyContacts(req, res, next);
+  }
+);
+
+router.post(
+  '/:id/emergency-contacts',
+  authenticate,
+  societyMutationLimiter,
+  validateParams(idParamSchema),
+  requireSocietyRole(['admin', 'committee']),
+  validateBody(createEmergencyContactSchema),
+  (req, res, next) => {
+    req.body.society_id = Number(req.params.id);
+    return societyEmergencyContactController.createEmergencyContact(req, res, next);
+  }
+);
+
+router.post(
+  '/:id/emergency-alert',
+  authenticate,
+  societyMutationLimiter,
+  validateParams(idParamSchema),
+  requireSocietyRole(['admin']),
+  validateBody(emergencyAlertSchema),
+  (req, res, next) => {
+    req.body.society_id = Number(req.params.id);
+    return societyEmergencyContactController.broadcastEmergencyAlert(req, res, next);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// PRD 21.5 / 21.6: Society Scoped Events
+// ---------------------------------------------------------------------------
+router.get(
+  '/:id/events',
+  authenticate,
+  societyReadLimiter,
+  validateParams(idParamSchema),
+  requireSocietyMember,
+  (req, res, next) => {
+    req.query.society_id = req.params.id;
+    return eventController.getUpcomingEvents(req, res, next);
+  }
+);
+
+router.post(
+  '/:id/events',
+  authenticate,
+  societyMutationLimiter,
+  validateParams(idParamSchema),
+  requireSocietyRole(['admin', 'committee']),
+  uploadImage('event').single('cover_image'),
+  validateBody(createEventSchema),
+  (req, res, next) => {
+    req.body.society_id = Number(req.params.id);
+    return eventController.createEvent(req, res, next);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// PRD 18.4: PUT /societies/complaints/:id
+// ---------------------------------------------------------------------------
+router.put(
+  '/complaints/:id',
+  authenticate,
+  societyMutationLimiter,
+  validateParams(idParamSchema),
+  validateBody(updateComplaintStatusSchema),
+  societyComplaintController.updateComplaintStatus
 );
 
 export default router;

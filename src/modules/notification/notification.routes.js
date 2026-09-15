@@ -129,6 +129,7 @@ router.patch('/me/read-all', notificationController.markAllNotificationsRead);
  *         description: Notification not found
  */
 router.patch('/:id/read', notificationController.markNotificationRead);
+router.patch('/:id/unread', notificationController.markNotificationUnread);
 
 /**
  * @swagger

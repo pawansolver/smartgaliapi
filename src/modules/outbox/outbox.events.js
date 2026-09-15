@@ -35,6 +35,9 @@ export const OUTBOX_EVENT_TYPES = {
   EVENT_DELETED:             'event.deleted',
   EVENT_RSVP_CHANGED:        'event.rsvp_changed',
   EVENT_REMINDER_REQUIRED:   'event.reminder_required',
+  EVENT_INVITATION_RECEIVED: 'event.invitation_received',
+  EVENT_INVITATION_ACCEPTED: 'event.invitation_accepted',
+  EVENT_INVITATION_DECLINED: 'event.invitation_declined',
 
   // ── Society Module Events ──
   SOCIETY_CREATED:                   'society.created',
@@ -49,6 +52,7 @@ export const OUTBOX_EVENT_TYPES = {
   SOCIETY_ANNOUNCEMENT_CREATED:      'society.announcement_created',
   SOCIETY_COMPLAINT_CREATED:         'society.complaint_created',
   SOCIETY_COMPLAINT_STATUS_CHANGED:  'society.complaint_status_changed',
+  SOCIETY_COMPLAINT_ASSIGNED:        'society.complaint_assigned',
   SOCIETY_VISITOR_CREATED:           'society.visitor_created',
   SOCIETY_VISITOR_ARRIVED:           'society.visitor_arrived',
   SOCIETY_VISITOR_APPROVED:          'society.visitor_approved',
@@ -59,6 +63,8 @@ export const OUTBOX_EVENT_TYPES = {
   SOCIETY_POLL_CREATED:              'society.poll_created',
   SOCIETY_POLL_VOTED:                'society.poll_voted',
   SOCIETY_POLL_CLOSED:               'society.poll_closed',
+  SOCIETY_EMERGENCY_ALERT:           'society.emergency_alert',
+  SOCIETY_DOCUMENT_UPLOADED:         'society.document_uploaded',
 
   // ── Chat ──────────────────────────────────────────────────────────────────
   MESSAGE_CREATED: 'message.created',

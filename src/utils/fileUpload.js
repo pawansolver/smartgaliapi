@@ -113,6 +113,9 @@ const uploadTypedFile = (folderName, extensions, maxBytes) => {
   });
 };
 
+export const uploadSocietyDocument = (folderName = 'society') =>
+  uploadTypedFile(folderName, COMMUNITY_DOCUMENT_EXTENSIONS, 25 * 1024 * 1024);
+
 export const uploadCommunityDocument = (folderName = 'community') =>
   uploadTypedFile(folderName, COMMUNITY_DOCUMENT_EXTENSIONS, 20 * 1024 * 1024);
 
@@ -126,14 +129,21 @@ export const uploadCommunityMedia = (folderName = 'community') =>
  * When you shift to AWS, just change this function to return the S3 URL 
  * (which might be directly available in `file.location` using multer-s3).
  */
-export const getImageUrl = (req, file, folderName = 'general') => {
-  if (!file) return null;
+export const getImageUrl = (req, fileOrFolder, folderOrFilename = 'general') => {
+  if (!fileOrFolder) return null;
   
-  // For AWS S3: return file.location;
+  // If called as getImageUrl(req, 'event', 'filename.jpg') or getImageUrl(req, 'event', file.filename)
+  if (typeof fileOrFolder === 'string') {
+    const folder = safeFolder(fileOrFolder);
+    const filename = typeof folderOrFilename === 'object' && folderOrFilename?.filename 
+      ? folderOrFilename.filename 
+      : folderOrFilename;
+    return `${env.publicMediaOrigin}/uploads/${folder}/${filename}`;
+  }
   
-  // For Local Storage:
-  const folder = safeFolder(folderName);
-  return `${env.publicMediaOrigin}/uploads/${folder}/${file.filename}`;
+  // Standard call: getImageUrl(req, file, 'folder')
+  const folder = safeFolder(folderOrFilename);
+  return `${env.publicMediaOrigin}/uploads/${folder}/${fileOrFolder.filename}`;
 };
 
 export const removeLocalUpload = async (fileUrl) => {
