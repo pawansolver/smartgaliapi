@@ -7,8 +7,10 @@ import {
   createAnnouncementSchema,
   updateAnnouncementSchema,
   listAnnouncementQuerySchema,
+  bulkDeleteAnnouncementSchema,
 } from '../society_profile/society.validation.js';
 import { requireSocietyMember, requireSocietyRole } from '../../middleware/societyAuth.middleware.js';
+import { uploadAnnouncementAttachmentFile } from '../../utils/fileUpload.js';
 import {
   societyReadLimiter,
   societyMutationLimiter,
@@ -23,6 +25,24 @@ router.post(
   requireSocietyRole(['admin', 'committee']),
   validateBody(createAnnouncementSchema),
   societyAnnouncementController.createAnnouncement
+);
+
+router.post(
+  '/upload-attachment',
+  authenticate,
+  societyMutationLimiter,
+  uploadAnnouncementAttachmentFile('announcements').single('file'),
+  requireSocietyRole(['admin', 'committee']),
+  societyAnnouncementController.uploadAttachment
+);
+
+router.post(
+  '/bulk-delete',
+  authenticate,
+  societyMutationLimiter,
+  requireSocietyRole(['admin', 'committee']),
+  validateBody(bulkDeleteAnnouncementSchema),
+  societyAnnouncementController.bulkDeleteAnnouncements
 );
 
 router.get(
@@ -51,6 +71,15 @@ router.put(
   requireSocietyRole(['admin', 'committee']),
   validateBody(updateAnnouncementSchema),
   societyAnnouncementController.updateAnnouncement
+);
+
+router.put(
+  '/:id/archive',
+  authenticate,
+  societyMutationLimiter,
+  validateParams(idParamSchema),
+  requireSocietyRole(['admin', 'committee']),
+  societyAnnouncementController.archiveAnnouncement
 );
 
 router.delete(

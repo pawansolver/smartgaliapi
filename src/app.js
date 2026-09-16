@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import { randomUUID } from 'node:crypto';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -50,7 +50,17 @@ app.use(cors({
     callback(error);
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'x-society-id',
+    'X-Society-Id',
+    'x-request-id',
+    'X-Request-Id',
+  ],
   credentials: true,
 })); // Enable CORS
 // Skip JSON / urlencoded parsers for multipart requests (file uploads).

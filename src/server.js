@@ -14,6 +14,7 @@ import './modules/message_deletion/message_deletion.model.js';
 import './modules/audit_log/audit_log.model.js';
 import './modules/outbox/outbox_event.model.js';
 import './modules/user_devices/user_device.model.js';
+import './modules/complaint_master/index.js';
 let httpServer;
 let io;
 let shuttingDown = false;

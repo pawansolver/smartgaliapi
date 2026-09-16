@@ -40,7 +40,7 @@ import eventCategoryRoutes from '../modules/event_category/event_category.routes
 import eventParticipantRoutes from '../modules/event_participant/event_participant.routes.js';
 import eventInvitationRoutes from '../modules/event_invitation/event_invitation.routes.js';
 import followRoutes from '../modules/follow/follow.routes.js';
-import userFollowRoutes from '../modules/follow/follow.routes.js'; // PRD: /users/follow, /users/followers, /users/following, /users/unfollow/:id
+import userFollowRoutes from '../modules/follow/follow.routes.js';
 import chatRoutes from '../modules/chat/chat.routes.js';
 import chatParticipantRoutes from '../modules/chat_participant/chat_participant.routes.js';
 import messageRoutes from '../modules/message/message.routes.js';
@@ -54,6 +54,12 @@ import analyticsRoutes from '../modules/analytics/analytics.routes.js';
 import profileRoutes from '../modules/profile/profile.routes.js';
 import authRoutes from '../modules/auth/auth.routes.js';
 import deviceRoutes from '../modules/user_devices/user_device.routes.js';
+import complaintMasterRoutes, {
+  categoryRouter,
+  subCategoryRouter,
+  locationTypeRouter,
+} from '../modules/complaint_master/complaint_master.routes.js';
+import superAdminComplaintRoutes from '../modules/society_complaint/super_admin_complaint.routes.js';
 import { generalApiLimiter } from '../middleware/rateLimit.middleware.js';
 
 const router = express.Router();
@@ -61,7 +67,6 @@ const router = express.Router();
 // Shared Redis-backed general API limiter (skips /health)
 router.use(generalApiLimiter);
 
-// Mount example module routes
 router.use('/example', exampleRoutes);
 router.use('/role', roleRoutes);
 router.use('/roles', roleRoutes);
@@ -127,6 +132,17 @@ router.use('/ad-banner', adBannerRoutes);
 router.use('/ad-campaign', adCampaignRoutes);
 router.use('/ad-sponsored', adSponsoredRoutes);
 router.use('/analytics', analyticsRoutes);
+
+// Complaint Masters (Resident queries & Super Admin management)
+router.use('/complaint-masters', complaintMasterRoutes);
+router.use('/complaint-categories', categoryRouter);
+router.use('/complaint-sub-categories', subCategoryRouter);
+router.use('/complaint-location-types', locationTypeRouter);
+
+// Super Admin Platform Oversight Routes
+router.use('/super-admin/complaints', superAdminComplaintRoutes);
+router.use('/admin/complaints', superAdminComplaintRoutes);
+router.use('/admin/complaint-masters', complaintMasterRoutes);
 
 // Health check route
 router.get('/health', (req, res) => {

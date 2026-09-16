@@ -95,7 +95,12 @@ const uploadTypedFile = (folderName, extensions, maxBytes) => {
       cb(null, uploadPath);
     },
     filename: (_req, file, cb) => {
-      const extension = extensions[file.mimetype];
+      let extension = extensions[file.mimetype];
+      if (!extension) {
+        const ext = path.extname(file.originalname || '').toLowerCase();
+        const matched = Object.entries(extensions).find(([, val]) => val === ext);
+        if (matched) extension = matched[1];
+      }
       if (!extension) {
         const error = new Error('Unsupported file type.');
         error.code = 'INVALID_FILE_TYPE';
@@ -106,12 +111,24 @@ const uploadTypedFile = (folderName, extensions, maxBytes) => {
   });
   return multer({
     storage,
-    fileFilter: (_req, file, cb) => extensions[file.mimetype]
-      ? cb(null, true)
-      : cb(Object.assign(new Error('Unsupported file type.'), { code: 'INVALID_FILE_TYPE' }), false),
+    fileFilter: (_req, file, cb) => {
+      if (extensions[file.mimetype]) return cb(null, true);
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const matched = Object.entries(extensions).some(([, val]) => val === ext);
+      if (matched) return cb(null, true);
+      return cb(Object.assign(new Error('Unsupported file type.'), { code: 'INVALID_FILE_TYPE' }), false);
+    },
     limits: { fileSize: maxBytes },
   });
 };
+
+export const ANNOUNCEMENT_ATTACHMENT_EXTENSIONS = Object.freeze({
+  ...IMAGE_EXTENSIONS,
+  ...COMMUNITY_DOCUMENT_EXTENSIONS,
+});
+
+export const uploadAnnouncementAttachmentFile = (folderName = 'announcements') =>
+  uploadTypedFile(folderName, ANNOUNCEMENT_ATTACHMENT_EXTENSIONS, 25 * 1024 * 1024);
 
 export const uploadSocietyDocument = (folderName = 'society') =>
   uploadTypedFile(folderName, COMMUNITY_DOCUMENT_EXTENSIONS, 25 * 1024 * 1024);

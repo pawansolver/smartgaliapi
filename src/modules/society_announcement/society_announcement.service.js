@@ -1,6 +1,10 @@
 import { Op } from 'sequelize';
 import sequelize from '../../config/db.js';
-import SocietyAnnouncement from './society_announcement.model.js';
+import SocietyAnnouncement, {
+  ANNOUNCEMENT_PRIORITY,
+  ANNOUNCEMENT_STATUS,
+  ANNOUNCEMENT_AUDIENCE,
+} from './society_announcement.model.js';
 import SocietyProfile from '../society_profile/society_profile.model.js';
 import User from '../user/user.model.js';
 import { createEvent } from '../outbox/outbox.service.js';
@@ -11,46 +15,102 @@ import {
   invalidateAnnouncementsCache,
 } from '../society_profile/society.cache.js';
 
+/**
+ * Generate unique sequential announcement number, e.g. ANN-2026-00019
+ */
+export const generateAnnouncementNumber = async (transaction) => {
+  const year = new Date().getFullYear();
+  const [result] = await sequelize.query(
+    'SELECT MAX(id) as maxId FROM society_announcements',
+    transaction ? { transaction } : {}
+  );
+  const nextSeq = (Number(result[0]?.maxId || 0) + 1);
+  return `ANN-${year}-${String(nextSeq).padStart(5, '0')}`;
+};
+
 export const createAnnouncement = async (societyId, userId, announcementData, meta = {}) => {
   const transaction = await sequelize.transaction();
   try {
+    const announcementNumber = await generateAnnouncementNumber(transaction);
+    const now = new Date();
+
+    const isDraft = announcementData.status === ANNOUNCEMENT_STATUS.DRAFT;
+    const publishAt = announcementData.publish_at ? new Date(announcementData.publish_at) : null;
+    const isScheduled = publishAt && publishAt > now;
+
+    let status = announcementData.status || ANNOUNCEMENT_STATUS.PUBLISHED;
+    let publishedAt = null;
+
+    if (!isDraft) {
+      if (isScheduled) {
+        status = ANNOUNCEMENT_STATUS.PUBLISHED;
+        publishedAt = publishAt;
+      } else {
+        status = ANNOUNCEMENT_STATUS.PUBLISHED;
+        publishedAt = now;
+      }
+    }
+
+    const messageText = announcementData.message || announcementData.content || '';
+    const summaryText = announcementData.summary || (messageText ? messageText.slice(0, 150) : null);
+
     const announcement = await SocietyAnnouncement.create({
+      announcement_number: announcementNumber,
       society_id: societyId,
       created_by: userId,
       title: announcementData.title,
-      message: announcementData.message || announcementData.content,
-      priority: announcementData.priority || 'medium',
+      summary: summaryText,
+      message: messageText,
+      action_text: announcementData.action_text || null,
+      audience: announcementData.audience || ANNOUNCEMENT_AUDIENCE.ENTIRE_SOCIETY,
+      priority: announcementData.priority || ANNOUNCEMENT_PRIORITY.MEDIUM,
       category: announcementData.category || 'general',
       is_pinned: Boolean(announcementData.is_pinned),
-      expires_at: announcementData.expires_at || null,
-      created_at: new Date(),
+      publish_at: publishAt || (isDraft ? null : now),
+      published_at: publishedAt,
+      status,
+      attachments: Array.isArray(announcementData.attachments) ? announcementData.attachments : [],
+      expires_at: announcementData.expires_at ? new Date(announcementData.expires_at) : null,
+      created_at: now,
     }, { transaction });
 
     await logSocietyAudit({
       societyId,
       actorUserId: userId,
-      action: 'society.announcement_created',
+      action: isDraft ? 'society.announcement_draft_created' : 'society.announcement_created',
       targetEntityType: 'announcement',
       targetEntityId: announcement.id,
-      newValue: { title: announcement.title, priority: announcement.priority },
+      newValue: {
+        announcement_number: announcement.announcement_number,
+        title: announcement.title,
+        priority: announcement.priority,
+        status: announcement.status,
+      },
       requestId: meta.requestId,
       ipAddress: meta.ip,
       userAgent: meta.userAgent,
     }, { transaction });
 
-    await createEvent({
-      event_type: 'society.announcement_created',
-      aggregate_type: 'society',
-      aggregate_id: String(societyId),
-      payload: {
-        societyId: Number(societyId),
-        announcementId: Number(announcement.id),
-        title: announcement.title,
-        message: announcement.message,
-        priority: announcement.priority,
-        createdBy: Number(userId),
-      },
-    }, { transaction });
+    // Only dispatch notification outbox event when published immediately (not draft and not scheduled for future)
+    const shouldDispatchNotification = !isDraft && (!publishAt || publishAt <= now);
+    if (shouldDispatchNotification) {
+      await createEvent({
+        event_type: 'society.announcement_created',
+        aggregate_type: 'announcement',
+        aggregate_id: announcement.id,
+        payload: {
+          societyId: Number(societyId),
+          announcementId: Number(announcement.id),
+          announcementNumber: announcement.announcement_number,
+          title: announcement.title,
+          summary: announcement.summary,
+          message: announcement.message,
+          priority: announcement.priority,
+          category: announcement.category,
+          createdBy: Number(userId),
+        },
+      }, { transaction });
+    }
 
     await transaction.commit();
     await invalidateAnnouncementsCache(societyId);
@@ -67,33 +127,72 @@ export const getAllAnnouncements = async (societyId, query = {}) => {
   const limit = Math.min(100, Math.max(1, parseInt(query.limit) || 20));
   const offset = (page - 1) * limit;
 
-  // Use cache for standard default query on page 1
-  if (page === 1 && !query.priority && !query.category && !query.search && !query.include_expired) {
+  // Use cache only for default active feed query
+  const isDefaultFeed = page === 1 &&
+    !query.priority &&
+    !query.category &&
+    !query.search &&
+    !query.status &&
+    !query.audience &&
+    !query.include_expired;
+
+  if (isDefaultFeed) {
     const cached = await getCachedAnnouncements(societyId);
     if (cached) return cached;
   }
 
   const where = { society_id: societyId, is_deleted: false };
-  if (query.priority) where.priority = query.priority;
-  if (query.category) where.category = query.category;
-  if (query.is_pinned !== undefined) where.is_pinned = query.is_pinned;
 
-  if (!query.include_expired) {
-    where[Op.or] = [
-      { expires_at: null },
-      { expires_at: { [Op.gt]: new Date() } },
-    ];
+  // Status handling:
+  // - If query.status === 'all', show all statuses (for admins)
+  // - If query.status is specified ('draft', 'published', 'archived'), filter by it
+  // - Default: only show 'published'
+  if (query.status && query.status !== 'all') {
+    where.status = query.status;
+  } else if (!query.status) {
+    where.status = ANNOUNCEMENT_STATUS.PUBLISHED;
   }
 
+  // Publication time filtering:
+  // If viewing published feed, notices must have published_at <= NOW()
+  if (where.status === ANNOUNCEMENT_STATUS.PUBLISHED && query.status !== 'all') {
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push({
+      [Op.or]: [
+        { published_at: null },
+        { published_at: { [Op.lte]: new Date() } },
+      ]
+    });
+  }
+
+  if (query.priority) where.priority = query.priority;
+  if (query.category) where.category = query.category;
+  if (query.audience) where.audience = query.audience;
+  if (query.is_pinned !== undefined) where.is_pinned = query.is_pinned;
+
+  // Expiry filtering: exclude expired notices unless explicitly requested
+  if (!query.include_expired) {
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push({
+      [Op.or]: [
+        { expires_at: null },
+        { expires_at: { [Op.gt]: new Date() } },
+      ]
+    });
+  }
+
+  // Multi-field search
   if (query.search) {
-    where[Op.and] = [
-      {
-        [Op.or]: [
-          { title: { [Op.like]: `%${query.search.trim()}%` } },
-          { message: { [Op.like]: `%${query.search.trim()}%` } },
-        ]
-      }
-    ];
+    const term = `%${query.search.trim()}%`;
+    where[Op.and] = where[Op.and] || [];
+    where[Op.and].push({
+      [Op.or]: [
+        { title: { [Op.like]: term } },
+        { announcement_number: { [Op.like]: term } },
+        { summary: { [Op.like]: term } },
+        { message: { [Op.like]: term } },
+      ]
+    });
   }
 
   const { rows, count } = await SocietyAnnouncement.findAndCountAll({
@@ -102,6 +201,7 @@ export const getAllAnnouncements = async (societyId, query = {}) => {
     offset,
     order: [
       ['is_pinned', 'DESC'],
+      ['published_at', 'DESC'],
       ['created_at', 'DESC'],
       ['id', 'DESC'],
     ],
@@ -118,7 +218,7 @@ export const getAllAnnouncements = async (societyId, query = {}) => {
     totalPages: Math.ceil(count / limit) || 1,
   };
 
-  if (page === 1 && !query.priority && !query.category && !query.search && !query.include_expired) {
+  if (isDefaultFeed) {
     await setCachedAnnouncements(societyId, response);
   }
 
@@ -148,16 +248,50 @@ export const updateAnnouncement = async (id, societyId, updateData, actorUserId,
     }
 
     const oldValue = announcement.toJSON();
-    await announcement.update({
-      ...updateData,
-      updated_by: actorUserId,
-      updatedAt: new Date(),
-    }, { transaction });
+    const fieldsToUpdate = { ...updateData };
+
+    if (updateData.content && !updateData.message) {
+      fieldsToUpdate.message = updateData.content;
+    }
+
+    const now = new Date();
+    let isTransitioningToPublished = false;
+
+    // If previously a draft or scheduled, and now being published
+    if (
+      updateData.status === ANNOUNCEMENT_STATUS.PUBLISHED &&
+      oldValue.status !== ANNOUNCEMENT_STATUS.PUBLISHED
+    ) {
+      fieldsToUpdate.published_at = fieldsToUpdate.publish_at && new Date(fieldsToUpdate.publish_at) > now
+        ? new Date(fieldsToUpdate.publish_at)
+        : now;
+      isTransitioningToPublished = true;
+    }
+
+    // Auto-update summary if message changed without explicit summary
+    if (fieldsToUpdate.message && !fieldsToUpdate.summary) {
+      fieldsToUpdate.summary = fieldsToUpdate.message.slice(0, 150);
+    }
+
+    fieldsToUpdate.updated_by = actorUserId;
+    fieldsToUpdate.updatedAt = now;
+
+    await announcement.update(fieldsToUpdate, { transaction });
+
+    // Determine audit action
+    let auditAction = 'society.announcement_updated';
+    if (isTransitioningToPublished) {
+      auditAction = 'society.announcement_published';
+    } else if (updateData.is_pinned !== undefined && updateData.is_pinned !== oldValue.is_pinned) {
+      auditAction = updateData.is_pinned ? 'society.announcement_pinned' : 'society.announcement_unpinned';
+    } else if (updateData.status === ANNOUNCEMENT_STATUS.ARCHIVED) {
+      auditAction = 'society.announcement_archived';
+    }
 
     await logSocietyAudit({
       societyId,
       actorUserId,
-      action: 'society.announcement_updated',
+      action: auditAction,
       targetEntityType: 'announcement',
       targetEntityId: id,
       oldValue,
@@ -166,6 +300,26 @@ export const updateAnnouncement = async (id, societyId, updateData, actorUserId,
       ipAddress: meta.ip,
       userAgent: meta.userAgent,
     }, { transaction });
+
+    // If newly transitioning to published, dispatch outbox event
+    if (isTransitioningToPublished) {
+      await createEvent({
+        event_type: 'society.announcement_created',
+        aggregate_type: 'announcement',
+        aggregate_id: announcement.id,
+        payload: {
+          societyId: Number(societyId),
+          announcementId: Number(announcement.id),
+          announcementNumber: announcement.announcement_number,
+          title: announcement.title,
+          summary: announcement.summary,
+          message: announcement.message,
+          priority: announcement.priority,
+          category: announcement.category,
+          createdBy: Number(announcement.created_by || actorUserId),
+        },
+      }, { transaction });
+    }
 
     await transaction.commit();
     await invalidateAnnouncementsCache(societyId);
@@ -192,6 +346,7 @@ export const softDeleteAnnouncement = async (id, societyId, deletedRemarks, acto
 
     await announcement.update({
       is_deleted: true,
+      status: ANNOUNCEMENT_STATUS.ARCHIVED,
       deletedRemarks,
       updated_by: actorUserId,
       updatedAt: new Date(),
@@ -218,3 +373,62 @@ export const softDeleteAnnouncement = async (id, societyId, deletedRemarks, acto
     throw error;
   }
 };
+
+export const bulkDeleteAnnouncements = async (ids, societyId, deletedRemarks, actorUserId, meta = {}) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const announcements = await SocietyAnnouncement.findAll({
+      where: {
+        id: { [Op.in]: ids },
+        society_id: societyId,
+        is_deleted: false,
+      },
+      lock: transaction.LOCK.UPDATE,
+      transaction,
+    });
+
+    if (!announcements.length) {
+      await transaction.commit();
+      return { count: 0, deletedIds: [] };
+    }
+
+    const deletedIds = announcements.map((a) => a.id);
+    const now = new Date();
+
+    await SocietyAnnouncement.update({
+      is_deleted: true,
+      status: ANNOUNCEMENT_STATUS.ARCHIVED,
+      deletedRemarks: deletedRemarks || 'Bulk deleted by admin',
+      updated_by: actorUserId,
+      updatedAt: now,
+    }, {
+      where: {
+        id: { [Op.in]: deletedIds },
+        society_id: societyId,
+      },
+      transaction,
+    });
+
+    await logSocietyAudit({
+      societyId,
+      actorUserId,
+      action: 'society.announcement_bulk_deleted',
+      targetEntityType: 'announcement',
+      targetEntityId: null,
+      reason: deletedRemarks || 'Bulk deleted by admin',
+      newValue: { count: deletedIds.length, deletedIds },
+      requestId: meta.requestId,
+      ipAddress: meta.ip,
+      userAgent: meta.userAgent,
+    }, { transaction });
+
+    await transaction.commit();
+    await invalidateAnnouncementsCache(societyId);
+
+    return { count: deletedIds.length, deletedIds };
+  } catch (error) {
+    if (transaction && !transaction.finished) await transaction.rollback().catch(() => {});
+    throw error;
+  }
+};
+

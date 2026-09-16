@@ -1,5 +1,9 @@
 import Joi from 'joi';
-import { ANNOUNCEMENT_PRIORITY } from '../society_announcement/society_announcement.model.js';
+import {
+  ANNOUNCEMENT_PRIORITY,
+  ANNOUNCEMENT_STATUS,
+  ANNOUNCEMENT_AUDIENCE,
+} from '../society_announcement/society_announcement.model.js';
 import { COMPLAINT_STATUS, COMPLAINT_PRIORITY } from '../society_complaint/society_complaint.model.js';
 import { VISITOR_STATUS } from '../society_visitor/society_visitor.model.js';
 import { SOCIETY_MEMBER_ROLE, SOCIETY_MEMBER_STATUS } from '../society_member/society_member.model.js';
@@ -82,11 +86,21 @@ export const listSocietyMemberQuerySchema = Joi.object({
 });
 
 // ── Society Announcement Schemas ──────────────────────────────────────────────
+export const announcementAttachmentSchema = Joi.object({
+  file_url: Joi.string().trim().required(),
+  file_name: Joi.string().trim().max(255).allow('', null).optional(),
+  file_type: Joi.string().trim().max(100).allow('', null).optional(),
+  file_size: Joi.number().integer().min(0).allow(null).optional(),
+});
+
 export const createAnnouncementSchema = Joi.object({
   society_id: id.required(),
   title: Joi.string().trim().min(3).max(255).required(),
+  summary: Joi.string().trim().max(500).allow('', null).optional(),
   message: Joi.string().trim().max(10000),
   content: Joi.string().trim().max(10000),
+  action_text: Joi.string().trim().max(500).allow('', null).optional(),
+  audience: Joi.string().valid(...Object.values(ANNOUNCEMENT_AUDIENCE)).default(ANNOUNCEMENT_AUDIENCE.ENTIRE_SOCIETY),
   priority: Joi.string().valid(...Object.values(ANNOUNCEMENT_PRIORITY)).default(ANNOUNCEMENT_PRIORITY.MEDIUM),
   category: Joi.string().trim().max(100).default('general'),
   sub_category: Joi.string().trim().max(100).allow('', null).optional(),
@@ -94,12 +108,19 @@ export const createAnnouncementSchema = Joi.object({
   flat_no: Joi.string().trim().max(50).allow('', null).optional(),
   exact_location: Joi.string().trim().max(255).allow('', null).optional(),
   is_pinned: Joi.boolean().default(false),
+  status: Joi.string().valid(...Object.values(ANNOUNCEMENT_STATUS)).default(ANNOUNCEMENT_STATUS.PUBLISHED),
+  publish_at: Joi.date().iso().allow(null).optional(),
   expires_at: Joi.date().iso().allow(null).optional(),
+  attachments: Joi.array().items(announcementAttachmentSchema).allow(null).optional(),
 });
 
 export const updateAnnouncementSchema = Joi.object({
   title: Joi.string().trim().min(3).max(255).optional(),
+  summary: Joi.string().trim().max(500).allow('', null).optional(),
   message: Joi.string().trim().max(10000).optional(),
+  content: Joi.string().trim().max(10000).optional(),
+  action_text: Joi.string().trim().max(500).allow('', null).optional(),
+  audience: Joi.string().valid(...Object.values(ANNOUNCEMENT_AUDIENCE)).optional(),
   priority: Joi.string().valid(...Object.values(ANNOUNCEMENT_PRIORITY)).optional(),
   category: Joi.string().trim().max(100).optional(),
   sub_category: Joi.string().trim().max(100).allow('', null).optional(),
@@ -107,7 +128,11 @@ export const updateAnnouncementSchema = Joi.object({
   flat_no: Joi.string().trim().max(50).allow('', null).optional(),
   exact_location: Joi.string().trim().max(255).allow('', null).optional(),
   is_pinned: Joi.boolean().optional(),
+  status: Joi.string().valid(...Object.values(ANNOUNCEMENT_STATUS)).optional(),
+  publish_at: Joi.date().iso().allow(null).optional(),
   expires_at: Joi.date().iso().allow(null).optional(),
+  attachments: Joi.array().items(announcementAttachmentSchema).allow(null).optional(),
+  deletedRemarks: Joi.string().trim().max(500).allow('', null).optional(),
 }).min(1);
 
 export const listAnnouncementQuerySchema = Joi.object({
@@ -115,8 +140,16 @@ export const listAnnouncementQuerySchema = Joi.object({
   society_id: id.optional(),
   priority: Joi.string().valid(...Object.values(ANNOUNCEMENT_PRIORITY)).optional(),
   category: Joi.string().trim().max(100).optional(),
+  status: Joi.string().valid(...Object.values(ANNOUNCEMENT_STATUS), 'all').optional(),
+  audience: Joi.string().valid(...Object.values(ANNOUNCEMENT_AUDIENCE)).optional(),
   is_pinned: Joi.boolean().optional(),
   include_expired: Joi.boolean().default(false),
+});
+
+export const bulkDeleteAnnouncementSchema = Joi.object({
+  ids: Joi.array().items(id).min(1).required(),
+  society_id: id.optional(),
+  deletedRemarks: Joi.string().trim().max(500).allow('', null).optional(),
 });
 
 // ── Society Complaint Schemas ─────────────────────────────────────────────────
