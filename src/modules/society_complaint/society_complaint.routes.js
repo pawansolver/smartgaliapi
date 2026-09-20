@@ -20,6 +20,7 @@ import {
 
 const router = express.Router();
 
+// ── CREATE COMPLAINT ─────────────────────────────────────────────────────────
 router.post(
   '/',
   authenticate,
@@ -29,6 +30,7 @@ router.post(
   societyComplaintController.createComplaint
 );
 
+// ── LIST COMPLAINTS ──────────────────────────────────────────────────────────
 router.get(
   '/',
   authenticate,
@@ -38,6 +40,7 @@ router.get(
   societyComplaintController.getAllComplaints
 );
 
+// ── COMPLAINT SUMMARY ─────────────────────────────────────────────────────────
 router.get(
   '/summary',
   authenticate,
@@ -46,15 +49,47 @@ router.get(
   societyComplaintController.getComplaintSummary
 );
 
+// ── GET COMPLAINT BY ID ───────────────────────────────────────────────────────
 router.get(
   '/:id',
   authenticate,
   societyReadLimiter,
   validateParams(idParamSchema),
-  requireSocietyMember,
+  async (req, res, next) => {
+    try {
+      const complaint = await SocietyComplaint.findOne({
+        where: { id: req.params.id, is_deleted: false },
+      });
+      if (!complaint) return errorResponse(res, 404, 'Society complaint not found');
+
+      req.societyId = complaint.society_id;
+      req.params.societyId = complaint.society_id;
+      req.query.society_id = complaint.society_id;
+
+      const actorUserId = req.user?.id || req.user?.userId;
+
+      // Allow assigned worker or creator directly without requiring society membership
+      if (Number(complaint.assigned_to) === Number(actorUserId) || Number(complaint.user_id) === Number(actorUserId)) {
+        req.societyContext = {
+          societyId: complaint.society_id,
+          role: Number(complaint.assigned_to) === Number(actorUserId) ? 'worker' : 'resident',
+        };
+        return next();
+      }
+
+      return requireSocietyMember(req, res, next);
+    } catch (err) {
+      return next(err);
+    }
+  },
   societyComplaintController.getComplaintById
 );
 
+// ── UPDATE COMPLAINT STATUS ───────────────────────────────────────────────────
+// Permission logic (in priority order):
+//   1. Creator can close (from resolved) or reopen (from closed)
+//   2. Assigned worker can accept (from assigned), start (from accepted), resolve (from in_progress)
+//   3. Admin/committee can do any management transition
 router.put(
   '/:id/status',
   authenticate,
@@ -62,19 +97,40 @@ router.put(
   validateParams(idParamSchema),
   async (req, res, next) => {
     try {
-      const complaint = await SocietyComplaint.findOne({ where: { id: req.params.id, is_deleted: false } });
+      const complaint = await SocietyComplaint.findOne({
+        where: { id: req.params.id, is_deleted: false },
+      });
       if (!complaint) return errorResponse(res, 404, 'Society complaint not found');
+
+      // Attach society context for downstream use
       req.body.society_id = complaint.society_id;
       req.params.societyId = complaint.society_id;
-      
+
       const actorUserId = req.user?.id || req.user?.userId;
-      const isCreatorAction = Number(complaint.user_id) === Number(actorUserId) && 
-        (req.body?.status === 'closed' || (['resolved', 'closed'].includes(complaint.status) && req.body?.status === 'open'));
+      const newStatus = req.body?.status;
+
+      // Rule 1: Creator can close or reopen
+      const isCreator = Number(complaint.user_id) === Number(actorUserId);
+      const isCreatorAction = isCreator && (
+        (newStatus === 'closed' && complaint.status === 'resolved') ||
+        (newStatus === 'open' && complaint.status === 'closed')
+      );
       if (isCreatorAction) {
-        req.isCreatorAction = true;
         req.societyContext = { societyId: complaint.society_id };
+        req.isCreatorAction = true;
         return next();
       }
+
+      // Rule 2: Assigned worker can accept / start / resolve their OWN task
+      const isAssignedWorker = complaint.assigned_to && Number(complaint.assigned_to) === Number(actorUserId);
+      const workerTransitions = ['accepted', 'in_progress', 'resolved'];
+      if (isAssignedWorker && workerTransitions.includes(newStatus)) {
+        req.societyContext = { societyId: complaint.society_id };
+        req.isWorkerAction = true;
+        return next();
+      }
+
+      // Rule 3: Admin / committee for everything else
       return requireSocietyRole(['admin', 'committee'])(req, res, next);
     } catch (err) {
       return next(err);
@@ -84,6 +140,7 @@ router.put(
   societyComplaintController.updateComplaintStatus
 );
 
+// ── ASSIGN COMPLAINT ──────────────────────────────────────────────────────────
 router.put(
   '/:id/assign',
   authenticate,
@@ -94,16 +151,43 @@ router.put(
   societyComplaintController.assignComplaint
 );
 
-
+// ── COMPLAINT HISTORY ─────────────────────────────────────────────────────────
 router.get(
   '/:id/history',
   authenticate,
   societyReadLimiter,
   validateParams(idParamSchema),
-  requireSocietyMember,
+  async (req, res, next) => {
+    try {
+      const complaint = await SocietyComplaint.findOne({
+        where: { id: req.params.id, is_deleted: false },
+      });
+      if (!complaint) return errorResponse(res, 404, 'Society complaint not found');
+
+      req.societyId = complaint.society_id;
+      req.params.societyId = complaint.society_id;
+      req.query.society_id = complaint.society_id;
+
+      const actorUserId = req.user?.id || req.user?.userId;
+
+      // Allow assigned worker or creator directly without requiring society membership
+      if (Number(complaint.assigned_to) === Number(actorUserId) || Number(complaint.user_id) === Number(actorUserId)) {
+        req.societyContext = {
+          societyId: complaint.society_id,
+          role: Number(complaint.assigned_to) === Number(actorUserId) ? 'worker' : 'resident',
+        };
+        return next();
+      }
+
+      return requireSocietyMember(req, res, next);
+    } catch (err) {
+      return next(err);
+    }
+  },
   societyComplaintController.getComplaintHistory
 );
 
+// ── DELETE COMPLAINT ──────────────────────────────────────────────────────────
 router.delete(
   '/:id',
   authenticate,

@@ -1,4 +1,4 @@
-import Joi from 'joi';
+﻿import Joi from 'joi';
 import {
   ANNOUNCEMENT_PRIORITY,
   ANNOUNCEMENT_STATUS,
@@ -16,7 +16,7 @@ const pageQuery = {
   search: Joi.string().trim().max(120).allow('').optional(),
 };
 
-// ── Params Schemas ────────────────────────────────────────────────────────────
+// â”€â”€ Params Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const idParamSchema = Joi.object({
   id: id.required(),
 });
@@ -26,7 +26,7 @@ export const societyIdParamSchema = Joi.object({
   id: id.optional(),
 });
 
-// ── Society Profile Schemas ───────────────────────────────────────────────────
+// â”€â”€ Society Profile Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const createSocietyProfileSchema = Joi.object({
   society_name: Joi.string().trim().min(3).max(255).required().messages({
     'string.empty': 'Society name is required',
@@ -52,11 +52,15 @@ export const listSocietyProfileQuerySchema = Joi.object({
   ...pageQuery,
 });
 
-// ── Society Member Schemas ────────────────────────────────────────────────────
+// â”€â”€ Society Member Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const createSocietyMemberSchema = Joi.object({
   society_id: id.required(),
+  user_id: id.optional(),
+  phone: Joi.string().trim().max(20).optional(),
   flat_no: Joi.string().trim().max(50).allow('', null).optional(),
   role: Joi.string().valid(...Object.values(SOCIETY_MEMBER_ROLE)).default(SOCIETY_MEMBER_ROLE.MEMBER),
+  trade: Joi.string().trim().max(100).allow('', null).optional(),
+  status: Joi.string().valid(...Object.values(SOCIETY_MEMBER_STATUS || {})).optional(),
 });
 
 export const updateSocietyMemberSchema = Joi.object({
@@ -67,6 +71,7 @@ export const updateSocietyMemberSchema = Joi.object({
 
 export const updateMemberRoleSchema = Joi.object({
   role: Joi.string().valid(...Object.values(SOCIETY_MEMBER_ROLE)).required(),
+  remark: Joi.string().trim().max(255).allow('', null).optional(),
 });
 
 export const memberApprovalSchema = Joi.object({
@@ -85,7 +90,7 @@ export const listSocietyMemberQuerySchema = Joi.object({
   status: Joi.string().valid(...Object.values(SOCIETY_MEMBER_STATUS)).optional(),
 });
 
-// ── Society Announcement Schemas ──────────────────────────────────────────────
+// â”€â”€ Society Announcement Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const announcementAttachmentSchema = Joi.object({
   file_url: Joi.string().trim().required(),
   file_name: Joi.string().trim().max(255).allow('', null).optional(),
@@ -152,7 +157,7 @@ export const bulkDeleteAnnouncementSchema = Joi.object({
   deletedRemarks: Joi.string().trim().max(500).allow('', null).optional(),
 });
 
-// ── Society Complaint Schemas ─────────────────────────────────────────────────
+// â”€â”€ Society Complaint Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const createComplaintSchema = Joi.object({
   society_id: id.required(),
   title: Joi.string().trim().min(3).max(255).required(),
@@ -185,6 +190,7 @@ export const updateComplaintStatusSchema = Joi.object({
 
 export const assignComplaintSchema = Joi.object({
   assigned_to: id.required(),
+  reason: Joi.string().trim().max(500).allow('', null).optional(),
 });
 
 export const listComplaintQuerySchema = Joi.object({
@@ -199,7 +205,7 @@ export const listComplaintQuerySchema = Joi.object({
   my_only: Joi.boolean().default(false),
 });
 
-// ── Society Facility Schemas ──────────────────────────────────────────────────
+// â”€â”€ Society Facility Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const createFacilitySchema = Joi.object({
   society_id: id.required(),
   name: Joi.string().trim().min(2).max(255).required(),
@@ -224,7 +230,7 @@ export const listFacilityQuerySchema = Joi.object({
   is_active: Joi.boolean().optional(),
 });
 
-// ── Society Parking Schemas ───────────────────────────────────────────────────
+// â”€â”€ Society Parking Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const createParkingSchema = Joi.object({
   society_id: id.required(),
   user_id: id.allow(null).optional(),
@@ -254,7 +260,7 @@ export const listParkingQuerySchema = Joi.object({
   status: Joi.string().valid('active', 'inactive').optional(),
 });
 
-// ── Society Poll Schemas ──────────────────────────────────────────────────────
+// â”€â”€ Society Poll Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const createPollSchema = Joi.object({
   society_id: id.required(),
   question: Joi.string().trim().min(3).max(500).required(),
@@ -278,7 +284,7 @@ export const listPollQuerySchema = Joi.object({
   status: Joi.string().valid('active', 'closed').optional(),
 });
 
-// ── Society Visitor Schemas ───────────────────────────────────────────────────
+// â”€â”€ Society Visitor Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const createVisitorSchema = Joi.object({
   society_id: id.required(),
   visitor_name: Joi.string().trim().min(2).max(100).required(),
@@ -310,7 +316,7 @@ export const listVisitorQuerySchema = Joi.object({
   status: Joi.string().valid(...Object.values(VISITOR_STATUS)).optional(),
   flat_no: Joi.string().trim().max(50).optional(),
 });
-// ── Society Document Schemas ───────────────────────────────────────────────────
+// â”€â”€ Society Document Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const createDocumentSchema = Joi.object({
   society_id: id.optional(),
   title: Joi.string().trim().min(2).max(255).required(),
@@ -334,7 +340,7 @@ export const listDocumentQuerySchema = Joi.object({
   search: Joi.string().trim().allow('', null).optional(),
 });
 
-// ── Society Emergency Contact Schemas ──────────────────────────────────────────
+// â”€â”€ Society Emergency Contact Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const createEmergencyContactSchema = Joi.object({
   society_id: id.optional(),
   name: Joi.string().trim().min(2).max(150).required(),
@@ -357,3 +363,4 @@ export const emergencyAlertSchema = Joi.object({
   message: Joi.string().trim().min(5).max(1000).required(),
   severity: Joi.string().valid('critical', 'high', 'medium', 'low').default('critical'),
 });
+

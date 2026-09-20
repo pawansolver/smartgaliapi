@@ -13,7 +13,7 @@ export const createUser = async (req, res, next) => {
 
 export const getAllUsers = async (req, res, next) => {
   try {
-    const users = await userService.getAllUsers();
+    const users = await userService.getAllUsers(req.query);
     return successResponse(res, 200, 'Users fetched successfully', users);
   } catch (error) {
     return next(error);

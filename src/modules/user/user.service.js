@@ -10,9 +10,21 @@ export const createUser = async (userData) => {
   return await User.create(userData);
 };
 
-export const getAllUsers = async () => {
+export const getAllUsers = async (filters = {}) => {
+  const where = { is_deleted: false };
+  if (filters.phone) {
+    const clean = String(filters.phone).replace(/\D/g, '').slice(-10);
+    where.phone = { [Op.like]: `%${clean}` };
+  }
+  if (filters.search) {
+    where[Op.or] = [
+      { userName: { [Op.like]: `%${filters.search}%` } },
+      { email: { [Op.like]: `%${filters.search}%` } },
+      { phone: { [Op.like]: `%${filters.search}%` } },
+    ];
+  }
   return await User.findAll({
-    where: { is_deleted: false },
+    where,
     attributes: ['userId', 'userName', 'email', 'phone', 'userRole', 'is_active', 'status'],
     include: [
       { model: UserProfile, as: 'profile', attributes: ['avatarUrl', 'fullName'] }

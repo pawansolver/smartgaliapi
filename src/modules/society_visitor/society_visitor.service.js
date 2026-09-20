@@ -70,6 +70,22 @@ export const createVisitor = async (societyId, callerUserId, data, meta = {}) =>
     }, { transaction });
 
     await transaction.commit();
+
+    // Notify Resident if visitor is at gate
+    if (hostUserId && (visitor.status === 'at_gate' || visitor.status === 'expected')) {
+      try {
+        await emitNotification(hostUserId, {
+          title: visitor.status === 'at_gate' ? 'Visitor at Gate!' : 'Expected Visitor Registered',
+          body: `${visitor.visitor_name} (${visitor.purpose || 'Visit'}) is ${visitor.status === 'at_gate' ? 'at the gate' : 'expected'} for Flat ${visitor.flat_no || ''}.`,
+          type: 'society_visitor',
+          entityId: String(visitor.visitorId),
+          societyId: Number(societyId),
+        });
+      } catch (err) {
+        // notification non-blocking
+      }
+    }
+
     return visitor;
   } catch (error) {
     if (transaction && !transaction.finished) await transaction.rollback().catch(() => {});
@@ -196,7 +212,7 @@ export const updateVisitorStatus = async (id, societyId, { status, remark }, act
       transaction,
     });
     const role = member ? member.role : 'resident';
-    const isStaffOrAdmin = ['admin', 'committee', 'security'].includes(role) || meta.isGlobalAdmin;
+    const isStaffOrAdmin = ['admin', 'committee', 'security', 'staff'].includes(role) || meta.isGlobalAdmin;
 
     // Gate operations (at_gate, checked_in, checked_out) are strictly for security/staff/admin
     if (['at_gate', 'checked_in', 'checked_out'].includes(status) && !isStaffOrAdmin) {

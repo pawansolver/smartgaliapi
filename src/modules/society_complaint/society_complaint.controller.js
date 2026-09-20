@@ -1,5 +1,6 @@
-import { successResponse, errorResponse } from '../../utils/response.js';
+﻿import { successResponse, errorResponse } from '../../utils/response.js';
 import * as societyComplaintService from './society_complaint.service.js';
+import { getEligibleAssignees } from '../society_worker/society_worker.service.js';
 
 export const createComplaint = async (req, res, next) => {
   try {
@@ -81,6 +82,18 @@ export const assignComplaint = async (req, res, next) => {
     });
     if (!complaint) return errorResponse(res, 404, 'Society complaint not found');
     return successResponse(res, 200, 'Complaint assigned successfully', complaint);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getEligibleAssigneesForComplaint = async (req, res, next) => {
+  try {
+    const societyId = req.societyContext?.societyId || req.query.society_id;
+    const { category } = req.query;
+    if (!societyId) return errorResponse(res, 400, 'society_id is required');
+    const result = await getEligibleAssignees(societyId, category);
+    return successResponse(res, 200, 'Eligible assignees fetched', result);
   } catch (error) {
     return next(error);
   }

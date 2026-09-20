@@ -9,6 +9,9 @@ export const SOCIETY_MEMBER_ROLE = Object.freeze({
   COMMITTEE: 'committee',
   MEMBER: 'member',
   TENANT: 'tenant',
+  STAFF: 'staff',
+  TECHNICIAN: 'technician',
+  PROVIDER: 'provider',
 });
 
 export const SOCIETY_MEMBER_STATUS = Object.freeze({
@@ -45,7 +48,7 @@ const SocietyMember = sequelize.define('SocietyMember', {
     allowNull: true,
   },
   role: {
-    type: DataTypes.ENUM('admin', 'member', 'tenant', 'committee'),
+    type: DataTypes.ENUM('admin', 'member', 'tenant', 'committee', 'staff', 'technician', 'provider'),
     defaultValue: 'member',
   },
   joined_at: {

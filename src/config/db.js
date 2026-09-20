@@ -1,3 +1,6 @@
+import dns from 'dns';
+dns.setDefaultResultOrder('ipv4first');
+
 import { Sequelize } from 'sequelize';
 import env from './env.js';
 import {

@@ -10,15 +10,23 @@ import { logger } from '../../utils/logger.js';
  * Shape a raw Notification row into the stable contract the mobile client
  * consumes. Keeps API responses decoupled from internal column names.
  */
-const serializeNotification = (n) => ({
-  id: Number(n.id),
-  title: n.title,
-  message: n.message,
-  type: n.type,
-  data: n.data ?? null,
-  isRead: !!n.is_read,
-  createdAt: n.created_at,
-});
+const serializeNotification = (n) => {
+  let parsedData = n.data;
+  if (typeof parsedData === 'string') {
+    try {
+      parsedData = JSON.parse(parsedData);
+    } catch (_) {}
+  }
+  return {
+    id: Number(n.id),
+    title: n.title,
+    message: n.message,
+    type: n.type || 'info',
+    data: parsedData ?? null,
+    isRead: !!n.is_read,
+    createdAt: n.created_at,
+  };
+};
 
 const preferenceColumns = new Set([
   'society_announcements',
@@ -178,18 +186,22 @@ export const resolveDisplayName = async (userId) => {
  */
 export const emitNotification = async ({
   recipientId,
+  userId,
   actorId = null,
   type = 'info',
   title,
   message,
+  body,
   data = null,
   preferenceKey = null,
   sendPush = true,
 }) => {
+  const targetUserId = recipientId || userId;
+  const notifMessage = message || body || title || '';
   try {
-    if (!recipientId) return null;
+    if (!targetUserId) return null;
     // Self-suppress: actor and recipient are the same person
-    if (actorId != null && String(recipientId) === String(actorId)) return null;
+    if (actorId != null && String(targetUserId) === String(actorId)) return null;
 
     // Resolve actor display name if not provided in title/message
     let actorName = null;
@@ -199,9 +211,9 @@ export const emitNotification = async ({
 
     // Build the notification record
     const notification = await createNotification({
-      user_id: recipientId,
+      user_id: targetUserId,
       title,
-      message,
+      message: notifMessage,
       type,
       is_read: false,
       created_by: actorId,
@@ -216,9 +228,9 @@ export const emitNotification = async ({
     // FCM push: fire-and-forget after DB write succeeds
     if (sendPush && notification) {
       sendToUser({
-        userId: recipientId,
+        userId: targetUserId,
         title,
-        body: message,
+        body: notifMessage,
         data: {
           type,
           ...(data || {}),
@@ -226,7 +238,7 @@ export const emitNotification = async ({
         },
       }).catch((err) => {
         logger.warn('emitNotification', 'fcm_push_failed', {
-          recipientId,
+          recipientId: targetUserId,
           type,
           error: err?.message || err,
         });
@@ -235,7 +247,7 @@ export const emitNotification = async ({
 
     return notification;
   } catch (err) {
-    logger.error('emitNotification', 'failed', { recipientId, type, error: err?.message || err });
+    logger.error('emitNotification', 'failed', { recipientId: targetUserId, type, error: err?.message || err });
     return null;
   }
 };

@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import exampleRoutes from '../modules/example/example.routes.js';
 import permissionRoutes from '../modules/permission/permission.routes.js';
 import roleRoutes from '../modules/role/role.routes.js';
@@ -28,6 +28,7 @@ import societyParkingRoutes from '../modules/society_parking/society_parking.rou
 import societyPollRoutes from '../modules/society_poll/society_poll.routes.js';
 import societyDocumentRoutes from '../modules/society_document/society_document.routes.js';
 import societyEmergencyContactRoutes from '../modules/society_emergency_contact/society_emergency_contact.routes.js';
+import societyWorkerRoutes from '../modules/society_worker/society_worker.routes.js';
 import mediaFileRoutes from '../modules/media_file/media_file.routes.js';
 import postRoutes from '../modules/post/post.routes.js';
 import feedRoutes from '../modules/feed/feed.routes.js';
@@ -105,6 +106,7 @@ router.use('/society-document', societyDocumentRoutes);
 router.use('/society-documents', societyDocumentRoutes);
 router.use('/society-emergency-contact', societyEmergencyContactRoutes);
 router.use('/society-emergency-contacts', societyEmergencyContactRoutes);
+router.use('/society-worker', societyWorkerRoutes);
 router.use('/media-file', mediaFileRoutes);
 router.use('/post', postRoutes);
 router.use('/feed', feedRoutes);
@@ -150,3 +152,4 @@ router.get('/health', (req, res) => {
 });
 
 export default router;
+

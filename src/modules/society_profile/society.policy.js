@@ -194,7 +194,7 @@ export const canViewVisitor = (society, membership, user, visitor) => {
 export const canApproveVisitor = (society, membership, user, visitor) => {
   if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
-  if (['owner', 'admin', 'security'].includes(role)) return true;
+  if (['owner', 'admin', 'committee', 'security', 'staff'].includes(role)) return true;
   if (visitor && Number(visitor.user_id) === Number(user?.id)) return true;
   return false;
 };
@@ -202,13 +202,13 @@ export const canApproveVisitor = (society, membership, user, visitor) => {
 export const canCheckInVisitor = (society, membership, user) => {
   if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
-  return ['owner', 'admin', 'security'].includes(role);
+  return ['owner', 'admin', 'committee', 'security', 'staff'].includes(role);
 };
 
 export const canCheckOutVisitor = (society, membership, user) => {
   if (isGlobalAdminUser(user)) return true;
   const role = getEffectiveRole(society, membership, user?.id);
-  return ['owner', 'admin', 'security'].includes(role);
+  return ['owner', 'admin', 'committee', 'security', 'staff'].includes(role);
 };
 
 export const canViewFacilities = (society, membership, user) => {

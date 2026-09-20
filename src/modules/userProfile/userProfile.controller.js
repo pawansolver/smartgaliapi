@@ -8,6 +8,8 @@ import { sendOtpEmail } from '../../utils/emailService.js';
 import sequelize from '../../config/db.js';
 import UserProfile from './userProfile.model.js';
 import BusinessProfile from '../business_profile/business_profile.model.js';
+import ServiceProviderProfile from '../service_provider_profile/service_provider_profile.model.js';
+import ServiceCategory from '../service_category/service_category.model.js';
 import { uploadImage, getImageUrl } from '../../utils/fileUpload.js';
 
 
@@ -407,6 +409,44 @@ export const completeProfileSetup = async (req, res, next) => {
         await existingBusiness.update(providerData, { transaction: t });
       } else {
         await BusinessProfile.create(providerData, { transaction: t });
+      }
+
+      // Ensure ServiceProviderProfile is created/updated for marketplace & worker assignments
+      let categoryId = null;
+      if (serviceCategory && typeof serviceCategory === 'string' && serviceCategory.trim()) {
+        const catName = serviceCategory.trim();
+        let cat = await ServiceCategory.findOne({
+          where: sequelize.where(
+            sequelize.fn('LOWER', sequelize.col('serviceCategoryName')),
+            catName.toLowerCase()
+          ),
+          transaction: t,
+        });
+        if (!cat) {
+          cat = await ServiceCategory.create({
+            serviceCategoryName: catName.charAt(0).toUpperCase() + catName.slice(1),
+            is_active: true,
+            is_deleted: false,
+          }, { transaction: t });
+        }
+        categoryId = cat.serviceCategoryId;
+      }
+
+      const existingSp = await ServiceProviderProfile.findOne({ where: { user_id: userId }, transaction: t });
+      const spData = {
+        user_id: userId,
+        service_category_id: categoryId,
+        description: serviceCategory || 'Service Provider',
+        experience: '1+ years',
+        hourly_rate: hourlyRate || 0,
+        is_verified: true,
+        is_active: true,
+        is_deleted: false,
+      };
+      if (existingSp) {
+        await existingSp.update(spData, { transaction: t });
+      } else {
+        await ServiceProviderProfile.create(spData, { transaction: t });
       }
     }
 

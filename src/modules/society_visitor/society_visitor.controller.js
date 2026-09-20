@@ -21,7 +21,7 @@ export const getAllVisitors = async (req, res, next) => {
     const userId = req.user?.id || req.user?.userId;
     const societyId = req.societyContext?.societyId || req.query.society_id;
     const role = req.societyContext?.role;
-    const isStaff = ['owner', 'admin', 'committee', 'security'].includes(role);
+    const isStaff = ['owner', 'admin', 'committee', 'security', 'staff'].includes(role);
 
     const result = await societyVisitorService.getAllVisitors(societyId, req.query, userId, isStaff);
     return successResponse(res, 200, 'Society visitors retrieved successfully', result.data, {
@@ -40,7 +40,7 @@ export const getVisitorById = async (req, res, next) => {
     const userId = req.user?.id || req.user?.userId;
     const societyId = req.societyContext?.societyId;
     const role = req.societyContext?.role;
-    const isStaff = ['owner', 'admin', 'committee', 'security'].includes(role);
+    const isStaff = ['owner', 'admin', 'committee', 'security', 'staff'].includes(role);
 
     const visitor = await societyVisitorService.getVisitorById(req.params.id, societyId, userId, isStaff);
     if (!visitor) return errorResponse(res, 404, 'Society visitor not found');

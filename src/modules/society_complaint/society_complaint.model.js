@@ -1,4 +1,4 @@
-import { DataTypes } from 'sequelize';
+﻿import { DataTypes } from 'sequelize';
 import sequelize from '../../config/db.js';
 import { commonFields } from '../../utils/commonFields.js';
 import SocietyProfile from '../society_profile/society_profile.model.js';
@@ -7,6 +7,7 @@ import User from '../user/user.model.js';
 export const COMPLAINT_STATUS = Object.freeze({
   OPEN: 'open',
   ASSIGNED: 'assigned',
+  ACCEPTED: 'accepted',
   IN_PROGRESS: 'in_progress',
   RESOLVED: 'resolved',
   CLOSED: 'closed',
@@ -28,74 +29,42 @@ const SocietyComplaint = sequelize.define('SocietyComplaint', {
   society_id: {
     type: DataTypes.BIGINT,
     allowNull: false,
-    references: {
-      model: SocietyProfile,
-      key: 'id',
-    },
+    references: { model: SocietyProfile, key: 'id' },
   },
   user_id: {
     type: DataTypes.BIGINT,
     allowNull: false,
-    references: {
-      model: User,
-      key: 'userId',
-    },
+    references: { model: User, key: 'userId' },
   },
-  title: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  description: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-  },
-  category: {
-    type: DataTypes.STRING(100),
-    defaultValue: 'general',
-    allowNull: false,
-  },
-  sub_category: {
-    type: DataTypes.STRING(100),
-    allowNull: true,
-  },
-  location_type: {
-    type: DataTypes.STRING(50),
-    allowNull: true,
-  },
-  flat_no: {
-    type: DataTypes.STRING(50),
-    allowNull: true,
-  },
-  exact_location: {
-    type: DataTypes.STRING(255),
-    allowNull: true,
-  },
+  title: { type: DataTypes.STRING, allowNull: false },
+  description: { type: DataTypes.TEXT, allowNull: true },
+  category: { type: DataTypes.STRING(100), defaultValue: 'general', allowNull: false },
+  sub_category: { type: DataTypes.STRING(100), allowNull: true },
+  location_type: { type: DataTypes.STRING(50), allowNull: true },
+  flat_no: { type: DataTypes.STRING(50), allowNull: true },
+  exact_location: { type: DataTypes.STRING(255), allowNull: true },
   priority: {
     type: DataTypes.ENUM('low', 'medium', 'high', 'urgent'),
     defaultValue: 'medium',
     allowNull: false,
   },
   status: {
-    type: DataTypes.ENUM('open', 'assigned', 'in_progress', 'resolved', 'closed'),
+    type: DataTypes.ENUM('open', 'assigned', 'accepted', 'in_progress', 'resolved', 'closed'),
     defaultValue: 'open',
     allowNull: false,
   },
   assigned_to: {
     type: DataTypes.BIGINT,
     allowNull: true,
-    references: {
-      model: User,
-      key: 'userId',
-    },
+    references: { model: User, key: 'userId' },
   },
-  resolved_at: {
-    type: DataTypes.DATE,
-    allowNull: true,
-  },
-  closed_at: {
-    type: DataTypes.DATE,
-    allowNull: true,
-  },
+  // Worker lifecycle timestamps
+  accepted_at: { type: DataTypes.DATE, allowNull: true },
+  accepted_by: { type: DataTypes.BIGINT, allowNull: true },
+  started_at: { type: DataTypes.DATE, allowNull: true },
+  resolved_at: { type: DataTypes.DATE, allowNull: true },
+  resolution_note: { type: DataTypes.TEXT, allowNull: true },
+  closed_at: { type: DataTypes.DATE, allowNull: true },
   ...commonFields,
 }, {
   timestamps: false,
