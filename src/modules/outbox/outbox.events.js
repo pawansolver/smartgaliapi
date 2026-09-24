@@ -65,6 +65,16 @@ export const OUTBOX_EVENT_TYPES = {
   SOCIETY_POLL_CLOSED:               'society.poll_closed',
   SOCIETY_EMERGENCY_ALERT:           'society.emergency_alert',
   SOCIETY_DOCUMENT_UPLOADED:         'society.document_uploaded',
+  SOCIETY_COMMITTEE_CREATED:         'society.committee_created',
+  SOCIETY_COMMITTEE_UPDATED:         'society.committee_updated',
+  SOCIETY_COMMITTEE_MEMBER_ADDED:    'society.committee_member_added',
+  SOCIETY_COMMITTEE_MEMBER_REMOVED:  'society.committee_member_removed',
+  SOCIETY_COMMITTEE_PERMISSION_GRANTED: 'society.committee_permission_granted',
+  SOCIETY_GUARD_ONBOARDED:           'society.guard_onboarded',
+  SOCIETY_GUARD_STATUS_CHANGED:      'society.guard_status_changed',
+  SOCIETY_GUARD_ASSIGNED:            'society.guard_assigned',
+  SOCIETY_GATE_CREATED:              'society.gate_created',
+  SOCIETY_SHIFT_CREATED:             'society.shift_created',
 
   // ── Chat ──────────────────────────────────────────────────────────────────
   MESSAGE_CREATED: 'message.created',

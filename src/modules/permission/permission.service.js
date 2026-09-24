@@ -1,3 +1,29 @@
+/**
+ * Safely extracts and normalizes gate IDs from committee scope metadata
+ */
+const extractCommitteeGateIds = (comm) => {
+  if (!comm) return [];
+  let ids = [];
+  try {
+    if (Array.isArray(comm.scope_gate_ids)) {
+      ids = [...comm.scope_gate_ids];
+    } else if (comm.scope_gate_ids) {
+      const parsed = typeof comm.scope_gate_ids === 'string' ? JSON.parse(comm.scope_gate_ids) : comm.scope_gate_ids;
+      ids = Array.isArray(parsed) ? [...parsed] : [parsed];
+    }
+  } catch (_) {
+    ids = [];
+  }
+  if (!Array.isArray(ids)) ids = [];
+  if (comm.scope_id != null) {
+    const sId = Number(comm.scope_id);
+    if (!isNaN(sId) && !ids.includes(sId)) {
+      ids.push(sId);
+    }
+  }
+  return ids.map(Number).filter(n => !isNaN(n));
+};
+
 import Permission from './permission.model.js';
 import RolePermission from './role_permission.model.js';
 import UserPermission from './user_permission.model.js';
@@ -8,6 +34,10 @@ import CommunityMember from '../communityMember/communityMember.model.js';
 import Community from '../community/community.model.js';
 import SocietyMember from '../society_member/society_member.model.js';
 import SocietyProfile from '../society_profile/society_profile.model.js';
+import { SocietyCommittee, SocietyCommitteeMember, SocietyCommitteePermission } from '../society_committee/society_committee.model.js';
+import SocietyGuardAuthorization from '../society_guard/society_guard_authorization.model.js';
+import SocietyGuardAssignment from '../society_guard/society_guard_assignment.model.js';
+import SocietyShift from '../society_shift/society_shift.model.js';
 import { audit } from '../audit_log/audit_log.service.js';
 import { isSuperAdminUser, isGlobalAdminUser } from '../../middleware/auth.middleware.js';
 import { cacheGet, cacheSet, cacheDel } from '../../config/redis.js';
@@ -408,10 +438,20 @@ export const hasPermission = async (user, permissionCode, context = {}) => {
       }
     }
 
-    // 4. Society Scope Check (IDOR & Society Role Validation)
+    // 4. Society Scope Check (IDOR, Owner, Committee PBAC & Guard Validation)
     if (context.societyId) {
       if (effective.isSuperAdmin) return true;
 
+      // 4a. Society Owner / Creator Master Access
+      const society = await SocietyProfile.findOne({
+        where: { id: context.societyId, is_deleted: false },
+        attributes: ['id', 'user_id', 'created_by'],
+      });
+      if (society && (Number(society.user_id) === Number(userId) || Number(society.created_by) === Number(userId))) {
+        return true;
+      }
+
+      // 4b. Society Member Role Check
       const societyMember = await SocietyMember.findOne({
         where: {
           society_id: context.societyId,
@@ -423,7 +463,10 @@ export const hasPermission = async (user, permissionCode, context = {}) => {
 
       if (societyMember) {
         const sRole = String(societyMember.role || '').toLowerCase();
-        if (sRole === 'admin' || sRole === 'committee') {
+        if (sRole === 'admin' || sRole === 'owner') {
+          return true; // Admin retains full oversight of all society modules
+        }
+        if (sRole === 'committee') {
           const allowedSocietyAdminPerms = [
             'society.view', 'society.update', 'society.manage_members',
             'society.parking.manage', 'society.complaint.create', 'society.complaint.resolve',
@@ -438,6 +481,122 @@ export const hasPermission = async (user, permissionCode, context = {}) => {
             'society.view', 'society.complaint.create', 'poll.create', 'poll.vote', 'event.create', 'event.rsvp',
           ];
           if (allowedSocietyResidentPerms.includes(permissionCode) && hasPlatformPerm) {
+            return true;
+          }
+        }
+      }
+
+      // 4c. Delegated Committee Granular Permissions Check
+      const commMembers = await SocietyCommitteeMember.findAll({
+        where: {
+          society_id: context.societyId,
+          user_id: userId,
+          status: 'active',
+          is_deleted: false,
+        },
+        include: [{
+          model: SocietyCommittee,
+          as: 'committee',
+          where: { status: 'active', is_deleted: false },
+        }],
+      });
+
+      if (commMembers && commMembers.length > 0) {
+        // Gate-Scoped Committee Check: If acting on a specific gate, verify user's committee scope includes this gate
+        if (context.gateId) {
+          const hasGlobalScope = commMembers.some(
+            m => !m.committee?.scope_type || m.committee?.scope_type === 'entire_society'
+          );
+          if (!hasGlobalScope) {
+            let isGateAllowed = false;
+            for (const m of commMembers) {
+              const comm = m.committee;
+              if (comm && (comm.scope_type === 'specific_gates' || comm.scope_type === 'gate')) {
+                const allowedGateIds = extractCommitteeGateIds(comm);
+                if (allowedGateIds.includes(Number(context.gateId))) {
+                  isGateAllowed = true;
+                  break;
+                }
+              }
+            }
+            if (!isGateAllowed) {
+              return false; // Out of committee gate scope: Deny access to this gate
+            }
+          }
+        }
+
+        for (const member of commMembers) {
+          const committee = member.committee;
+          let isScopeAllowed = true;
+
+          // Scope check: If committee is restricted to specific gates or gate
+          if (committee && (committee.scope_type === 'specific_gates' || committee.scope_type === 'gate')) {
+            const allowedGateIds = extractCommitteeGateIds(committee);
+            if (context.gateId) {
+              if (!allowedGateIds.includes(Number(context.gateId))) {
+                isScopeAllowed = false;
+              }
+            }
+          }
+
+          if (isScopeAllowed) {
+            const assignedPerm = await SocietyCommitteePermission.findOne({
+              where: {
+                society_id: context.societyId,
+                permission_code: permissionCode,
+                [Op.or]: [
+                  { committee_id: committee.id, committee_member_id: null },
+                  { committee_member_id: member.id },
+                ],
+              },
+            });
+
+            if (assignedPerm) {
+              return true;
+            }
+          }
+        }
+      }
+
+      // 4d. Authorized Security Guard Operations Check
+      const guardAuth = await SocietyGuardAuthorization.findOne({
+        where: {
+          society_id: context.societyId,
+          user_id: userId,
+          status: 'active',
+          is_deleted: false,
+        },
+      });
+
+      if (guardAuth) {
+        // Shift-Scoped Guard Validation: Guard must have an active assignment matching the gate
+        const assignmentWhere = {
+          guard_authorization_id: guardAuth.id,
+          society_id: context.societyId,
+          status: 'active',
+          is_deleted: false,
+        };
+        if (context.gateId) {
+          assignmentWhere.gate_id = context.gateId;
+        }
+
+        const activeAssignment = await SocietyGuardAssignment.findOne({
+          where: assignmentWhere,
+          include: [{ model: SocietyShift, as: 'shift' }],
+        });
+
+        if (activeAssignment) {
+          const standardGuardPerms = [
+            'visitor.read',
+            'visitor.create_gate_entry',
+            'visitor.check_in',
+            'visitor.check_out',
+            'visitor.view_history',
+            'gate.read',
+            'shift.read',
+            'security.dashboard.read',
+          ];
+          if (standardGuardPerms.includes(permissionCode)) {
             return true;
           }
         }
@@ -859,4 +1018,46 @@ export const removeDirectUserPermission = async (targetUserId, permissionId, act
   }
 
   return true;
+};
+
+export const getUserCommitteeGateScope = async (userId, societyId) => {
+  try {
+    const commMembers = await SocietyCommitteeMember.findAll({
+      where: {
+        society_id: societyId,
+        user_id: userId,
+        status: 'active',
+        is_deleted: false,
+      },
+      include: [{
+        model: SocietyCommittee,
+        as: 'committee',
+        where: { status: 'active', is_deleted: false },
+      }],
+    });
+    if (!commMembers || commMembers.length === 0) return { isRestricted: false, allowedGateIds: [] };
+
+    const hasGlobalScope = commMembers.some(
+      m => !m.committee?.scope_type || m.committee?.scope_type === 'entire_society'
+    );
+    if (hasGlobalScope) {
+      return { isRestricted: false, allowedGateIds: [] };
+    }
+
+    const allowedGateIds = new Set();
+    for (const m of commMembers) {
+      const comm = m.committee;
+      if (comm && (comm.scope_type === 'specific_gates' || comm.scope_type === 'gate')) {
+        const gIds = extractCommitteeGateIds(comm);
+        gIds.forEach(id => allowedGateIds.add(Number(id)));
+      }
+    }
+
+    return {
+      isRestricted: true,
+      allowedGateIds: Array.from(allowedGateIds),
+    };
+  } catch (_) {
+    return { isRestricted: false, allowedGateIds: [] };
+  }
 };

@@ -247,7 +247,7 @@ export const updateComplaintStatus = async (id, societyId, { status, remark }, a
 
     // Strict enterprise state machine
     const allowedTransitions = {
-      open:        ['assigned'],                     // only admin can assign → status changes to assigned
+      open:        ['assigned', 'in_progress', 'resolved', 'closed'],                     // only admin can assign → status changes to assigned
       assigned:    ['accepted', 'open'],              // worker accepts OR admin unassigns (→ open)
       accepted:    ['in_progress', 'assigned'],       // worker starts OR admin reverts
       in_progress: ['resolved', 'accepted'],          // worker resolves OR reverts to accepted

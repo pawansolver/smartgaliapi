@@ -11,7 +11,7 @@ import { SOCIETY_MEMBER_ROLE, SOCIETY_MEMBER_STATUS } from '../society_member/so
 const id = Joi.number().integer().positive();
 const pageQuery = {
   page: Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(20),
+  limit: Joi.number().integer().min(1).max(500).default(20),
   cursor: Joi.number().integer().positive().optional(),
   search: Joi.string().trim().max(120).allow('').optional(),
 };
@@ -289,11 +289,30 @@ export const createVisitorSchema = Joi.object({
   society_id: id.required(),
   visitor_name: Joi.string().trim().min(2).max(100).required(),
   visitor_phone: Joi.string().trim().max(20).allow('', null).optional(),
+  phone_number: Joi.string().trim().max(20).allow('', null).optional(),
   purpose: Joi.string().trim().max(255).allow('', null).optional(),
   vehicle_no: Joi.string().trim().max(50).allow('', null).optional(),
+  vehicle_number: Joi.string().trim().max(50).allow('', null).optional(),
+  driver_name: Joi.string().trim().max(100).allow('', null).optional(),
+  cab_number: Joi.string().trim().max(50).allow('', null).optional(),
+  service_category: Joi.string().trim().max(100).allow('', null).optional(),
+  worker_type: Joi.string().trim().max(100).allow('', null).optional(),
   flat_no: Joi.string().trim().max(50).allow('', null).optional(),
   expected_time: Joi.date().iso().allow(null).optional(),
   status: Joi.string().valid(...Object.values(VISITOR_STATUS)).default(VISITOR_STATUS.EXPECTED),
+  visitor_type: Joi.string().valid('guest', 'delivery', 'cab', 'service', 'vendor', 'worker', 'domestic_worker', 'other').optional(),
+  company_name: Joi.string().trim().max(100).allow('', null).optional(),
+  vehicle_type: Joi.string().valid('two_wheeler', '2_wheeler', 'four_wheeler', '4_wheeler', 'commercial', 'none', 'other').optional(),
+  entry_type: Joi.string().valid('expected', 'walk_in', 'guard_entry').optional(),
+  gate_id: id.allow(null).optional(),
+  guard_id: id.allow(null).optional(),
+  user_id: id.allow(null).optional(),
+  host_resident_id: id.allow(null).optional(),
+  host_resident: Joi.string().trim().allow('', null).optional(),
+  id_type: Joi.string().valid('aadhaar', 'driving_license', 'voter_id', 'passport', 'other').allow(null).optional(),
+  id_number: Joi.string().trim().max(100).allow('', null).optional(),
+  check_in_time: Joi.date().iso().allow(null).optional(),
+  check_out_time: Joi.date().iso().allow(null).optional(),
 });
 
 export const updateVisitorSchema = Joi.object({

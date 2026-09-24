@@ -1,4 +1,3 @@
-import { getIsRedisAvailable } from '../../config/redis.js';
 import { logger } from '../../utils/logger.js';
 import * as queues from '../../infrastructure/queues/index.js';
 import OutboxEvent from './outbox_event.model.js';
@@ -38,14 +37,6 @@ export const publishOutboxEvent = async (outboxEvent) => {
   // Already finished — nothing to enqueue
   if (outboxEvent.status === OUTBOX_STATUS.PUBLISHED) {
     return { ok: true, reason: 'already_published' };
-  }
-
-  if (!getIsRedisAvailable()) {
-    logger.warn('OUTBOX', 'redis_unavailable_skip_enqueue', {
-      eventId: outboxEvent.id,
-      eventType: outboxEvent.event_type,
-    });
-    return { ok: false, reason: 'redis_unavailable' };
   }
 
   try {

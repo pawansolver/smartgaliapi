@@ -210,6 +210,12 @@ test('Society Functional Suite: Complete 8-Module Lifecycle Test', async (t) => 
   });
 
   await t.test('8. Visitor Gate Pass State Machine Transitions', async () => {
+    // Ensure guard user is onboarded as active staff member in society
+    await memberService.createMember(testSocietyId, guard.userId, {
+      role: 'staff',
+      status: 'active',
+    }, { isStaffOnboarding: true });
+
     // Resident 1 pre-approves visitor
     const visitor = await visitorService.createVisitor(testSocietyId, resident1.userId, {
       visitor_name: 'John Electrician',

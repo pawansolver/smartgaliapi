@@ -25,6 +25,7 @@ import * as societyComplaintController from '../society_complaint/society_compla
 import * as societyDocumentController from '../society_document/society_document.controller.js';
 import * as societyEmergencyContactController from '../society_emergency_contact/society_emergency_contact.controller.js';
 import * as eventController from '../event/event.controller.js';
+import * as committeeCtrl from '../society_committee/society_committee.controller.js';
 import { uploadSocietyDocument } from '../../utils/fileUpload.js';
 import {
   createDocumentSchema,

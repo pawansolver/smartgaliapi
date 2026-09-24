@@ -20,12 +20,41 @@ import {
  */
 export const generateAnnouncementNumber = async (transaction) => {
   const year = new Date().getFullYear();
-  const [result] = await sequelize.query(
+  const [rows] = await sequelize.query(
+    `SELECT announcement_number FROM society_announcements WHERE announcement_number LIKE 'ANN-${year}-%' ORDER BY id DESC LIMIT 50`,
+    transaction ? { transaction } : {}
+  );
+  let maxSeq = 0;
+  for (const row of rows) {
+    const parts = (row.announcement_number || '').split('-');
+    const seq = parseInt(parts[2], 10);
+    if (!isNaN(seq) && seq > maxSeq) {
+      maxSeq = seq;
+    }
+  }
+  const [idRes] = await sequelize.query(
     'SELECT MAX(id) as maxId FROM society_announcements',
     transaction ? { transaction } : {}
   );
-  const nextSeq = (Number(result[0]?.maxId || 0) + 1);
-  return `ANN-${year}-${String(nextSeq).padStart(5, '0')}`;
+  const maxId = Number(idRes[0]?.maxId || 0);
+  let nextSeq = Math.max(maxSeq, maxId) + 1;
+  let candidate = `ANN-${year}-${String(nextSeq).padStart(5, '0')}`;
+
+  let exists = true;
+  while (exists) {
+    const [chk] = await sequelize.query(
+      `SELECT id FROM society_announcements WHERE announcement_number = '${candidate}' LIMIT 1`,
+      transaction ? { transaction } : {}
+    );
+    if (chk && chk.length > 0) {
+      nextSeq++;
+      candidate = `ANN-${year}-${String(nextSeq).padStart(5, '0')}`;
+    } else {
+      exists = false;
+    }
+  }
+
+  return candidate;
 };
 
 export const createAnnouncement = async (societyId, userId, announcementData, meta = {}) => {

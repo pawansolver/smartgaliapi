@@ -116,9 +116,74 @@ export const requireSocietyRole = (allowedRoles = ['admin', 'committee']) => {
   };
 };
 
+
+import { hasPermission } from '../modules/permission/permission.service.js';
+import SocietyGuardAuthorization from '../modules/society_guard/society_guard_authorization.model.js';
+import { SocietyCommitteeMember } from '../modules/society_committee/society_committee.model.js';
+
+/**
+ * Middleware: Requires a specific granular society permission (e.g. 'guard.onboard', 'visitor.read').
+ * Handles full creator/owner bypass, delegated committee members, and active guard checks.
+ */
+export const requireSocietyPermission = (permissionCode) => {
+  return async (req, res, next) => {
+    try {
+      const userId = req.user?.id || req.user?.userId;
+      if (!userId) {
+        return errorResponse(res, 401, 'Unauthorized: Authentication required');
+      }
+
+      const { societyId, society, membership, isOwner, effectiveRole, error } = await loadSocietyAccessContext(req);
+      if (error) return errorResponse(res, ...error);
+
+      // Global Admin / Super Admin or Creator/Owner has full access
+      if (isOwner || policy.isGlobalAdminUser(req.user)) {
+        req.society = society;
+        req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
+        req.societyContext = { societyId, society, membership: req.societyMembership, role: 'owner', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
+        return next();
+      }
+
+      // Check Society Isolation: caller must have active affiliation (membership, committee, or authorized guard)
+      let hasAffiliation = membership && membership.status === 'active';
+      if (!hasAffiliation) {
+        const activeGuard = await SocietyGuardAuthorization.findOne({
+          where: { society_id: societyId, user_id: userId, status: 'active', is_deleted: false },
+        });
+        if (activeGuard) hasAffiliation = true;
+      }
+      if (!hasAffiliation) {
+        const activeCommitteeMember = await SocietyCommitteeMember.findOne({
+          where: { society_id: societyId, user_id: userId, status: 'active', is_deleted: false },
+        });
+        if (activeCommitteeMember) hasAffiliation = true;
+      }
+
+      if (!hasAffiliation) {
+        return errorResponse(res, 403, 'Forbidden: You do not have an active affiliation with this society');
+      }
+
+      // Check granular permission
+      const gateId = req.headers?.['x-gate-id'] || req.query?.gate_id || req.query?.gateId || req.body?.gate_id || req.body?.gateId || req.params?.gateId;
+      const authorized = await hasPermission(req.user, permissionCode, { societyId, gateId });
+      if (!authorized) {
+        return errorResponse(res, 403, `Forbidden: Missing required permission '${permissionCode}'`);
+      }
+
+      req.society = society;
+      req.societyMembership = membership;
+      req.societyContext = { societyId, society, membership, role: effectiveRole, isOwner: false };
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  };
+};
+
 export default {
   resolveSocietyId,
   loadSocietyAccessContext,
   requireSocietyMember,
   requireSocietyRole,
+  requireSocietyPermission,
 };

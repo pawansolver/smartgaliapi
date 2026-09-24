@@ -1,3 +1,4 @@
+import { getUserCommitteeGateScope } from '../permission/permission.service.js';
 import { successResponse, errorResponse } from '../../utils/response.js';
 import * as societyVisitorService from './society_visitor.service.js';
 
@@ -21,6 +22,22 @@ export const getAllVisitors = async (req, res, next) => {
     const userId = req.user?.id || req.user?.userId;
     const societyId = req.societyContext?.societyId || req.query.society_id;
     const role = req.societyContext?.role;
+    // Check committee gate scope in getAllVisitors
+    const isOwnerOrAdmin = ['owner', 'admin'].includes(role) || req.societyContext?.isOwner;
+    if (!isOwnerOrAdmin && societyId) {
+      const gateScope = await getUserCommitteeGateScope(userId, societyId);
+      if (gateScope.isRestricted) {
+        const requestedGateId = req.query?.gate_id || req.query?.gateId;
+        if (requestedGateId) {
+          if (!gateScope.allowedGateIds.includes(Number(requestedGateId))) {
+            return errorResponse(res, 403, 'Forbidden: Gate is outside your assigned committee scope');
+          }
+        } else {
+          req.query.gate_id = gateScope.allowedGateIds;
+        }
+      }
+    }
+
     const isStaff = ['owner', 'admin', 'committee', 'security', 'staff'].includes(role);
 
     const result = await societyVisitorService.getAllVisitors(societyId, req.query, userId, isStaff);

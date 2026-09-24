@@ -184,7 +184,7 @@ export const updateVisitor = async (id, societyId, data, actorUserId, meta = {})
   }
 };
 
-export const updateVisitorStatus = async (id, societyId, { status, remark }, actorUserId, meta = {}) => {
+export const updateVisitorStatus = async (id, societyId, { status, remark, reason, gate_id }, actorUserId, meta = {}) => {
   const transaction = await sequelize.transaction();
   try {
     const visitor = await SocietyVisitor.findOne({
@@ -205,7 +205,6 @@ export const updateVisitorStatus = async (id, societyId, { status, remark }, act
       throw err;
     }
 
-    
     // Role and host authorization check
     const member = await SocietyMember.findOne({
       where: { society_id: societyId, user_id: actorUserId, is_deleted: false, status: 'active' },
@@ -240,10 +239,19 @@ export const updateVisitorStatus = async (id, societyId, { status, remark }, act
 
     if (status === 'checked_in') {
       updatePayload.check_in_time = new Date();
+      updatePayload.approval_status = 'approved';
+      if (gate_id) updatePayload.gate_id = gate_id;
     } else if (status === 'checked_out') {
       updatePayload.check_out_time = new Date();
     } else if (status === 'approved') {
       updatePayload.approved_by = actorUserId;
+      updatePayload.approved_at = new Date();
+      updatePayload.approval_status = 'approved';
+    } else if (status === 'denied') {
+      updatePayload.rejected_by = actorUserId;
+      updatePayload.rejected_at = new Date();
+      updatePayload.rejection_reason = reason || remark || 'Denied by resident';
+      updatePayload.approval_status = 'rejected';
     }
 
     await visitor.update(updatePayload, { transaction });
@@ -266,8 +274,14 @@ export const updateVisitorStatus = async (id, societyId, { status, remark }, act
       targetEntityType: 'visitor',
       targetEntityId: id,
       oldValue: { status: currentStatus },
-      newValue: { status },
-      reason: remark,
+      newValue: {
+        status,
+        check_in_time: updatePayload.check_in_time,
+        check_out_time: updatePayload.check_out_time,
+        operator_id: actorUserId,
+        gate_id: updatePayload.gate_id || visitor.gate_id,
+      },
+      reason: remark || reason,
       requestId: meta.requestId,
       ipAddress: meta.ip,
       userAgent: meta.userAgent,
@@ -285,10 +299,180 @@ export const updateVisitorStatus = async (id, societyId, { status, remark }, act
         flatNo: visitor.flat_no,
         status,
         updatedBy: Number(actorUserId),
+        checkInTime: updatePayload.check_in_time,
+        checkOutTime: updatePayload.check_out_time,
       },
     }, { transaction });
 
     await transaction.commit();
+
+    // ── Emit Real-time & Push Notifications for Status Changes ──
+    try {
+      let hostId = visitor.user_id;
+      if (!hostId && visitor.flat_no) {
+        try {
+          const flatMem = await SocietyMember.findOne({
+            where: { society_id: societyId, flat_no: visitor.flat_no, is_deleted: false, status: 'active' },
+          });
+          if (flatMem) hostId = flatMem.user_id;
+        } catch (_) {}
+      }
+
+      if (status === 'approved' || status === 'denied') {
+        // Notify guard/gate staff
+        const guardUserIds = new Set();
+        if (visitor.created_by && Number(visitor.created_by) !== Number(actorUserId)) {
+          guardUserIds.add(Number(visitor.created_by));
+        }
+        if (visitor.guard_id) {
+          try {
+            const guard = await SocietyGuardAuthorization.findByPk(visitor.guard_id);
+            if (guard && Number(guard.user_id) !== Number(actorUserId)) {
+              guardUserIds.add(Number(guard.user_id));
+            }
+          } catch (_) {}
+        }
+        try {
+          const staffMembers = await SocietyMember.findAll({
+            where: { society_id: societyId, role: 'staff', status: 'active', is_deleted: false },
+          });
+          for (const sm of staffMembers) {
+            if (Number(sm.user_id) !== Number(actorUserId)) {
+              guardUserIds.add(Number(sm.user_id));
+            }
+          }
+        } catch (_) {}
+
+        for (const gid of guardUserIds) {
+          try {
+            await emitNotification(gid, {
+              title: status === 'approved' ? 'Visitor Approved' : 'Visitor Rejected',
+              body: `Resident ${status === 'approved' ? 'approved' : 'rejected'} visitor ${visitor.visitor_name} for flat ${visitor.flat_no || 'N/A'}.`,
+              type: 'info',
+              societyId: Number(societyId),
+              data: {
+                visitorId: visitor.visitorId || id,
+                societyId: Number(societyId),
+                flatNo: visitor.flat_no,
+                type: 'society_visitor',
+                status,
+              },
+            });
+          } catch (_) {}
+        }
+      } else if (status === 'at_gate') {
+        if (hostId && Number(hostId) !== Number(actorUserId)) {
+          try {
+            await emitNotification(hostId, {
+              title: 'Visitor at Gate!',
+              body: `${visitor.visitor_name} is waiting at the gate for Flat ${visitor.flat_no || 'N/A'}.`,
+              type: 'info',
+              societyId: Number(societyId),
+              data: {
+                visitorId: visitor.visitorId || id,
+                societyId: Number(societyId),
+                flatNo: visitor.flat_no,
+                type: 'society_visitor',
+                status: 'at_gate',
+              },
+            });
+          } catch (_) {}
+        }
+      } else if (status === 'checked_in') {
+        // 1. Notify Resident (Host)
+        if (hostId && Number(hostId) !== Number(actorUserId)) {
+          try {
+            await emitNotification(hostId, {
+              title: 'Visitor Entered Gate',
+              body: `${visitor.visitor_name} has checked in at the gate.`,
+              type: 'info',
+              societyId: Number(societyId),
+              data: {
+                visitorId: visitor.visitorId || id,
+                societyId: Number(societyId),
+                flatNo: visitor.flat_no,
+                type: 'society_visitor',
+                status: 'checked_in',
+                checkInTime: updatePayload.check_in_time,
+              },
+            });
+          } catch (_) {}
+        }
+
+        // 2. Notify Society Admins / Committee
+        try {
+          const admins = await SocietyMember.findAll({
+            where: { society_id: societyId, role: ['admin', 'committee'], status: 'active', is_deleted: false },
+          });
+          for (const admin of admins) {
+            if (Number(admin.user_id) !== Number(actorUserId) && Number(admin.user_id) !== Number(hostId)) {
+              await emitNotification(admin.user_id, {
+                title: 'Visitor Checked In',
+                body: `${visitor.visitor_name} (Flat ${visitor.flat_no || 'N/A'}) has checked in at the gate.`,
+                type: 'info',
+                societyId: Number(societyId),
+                data: {
+                  visitorId: visitor.visitorId || id,
+                  societyId: Number(societyId),
+                  flatNo: visitor.flat_no,
+                  type: 'society_visitor',
+                  status: 'checked_in',
+                  checkInTime: updatePayload.check_in_time,
+                },
+              });
+            }
+          }
+        } catch (_) {}
+      } else if (status === 'checked_out') {
+        // 1. Notify Resident (Host)
+        if (hostId && Number(hostId) !== Number(actorUserId)) {
+          try {
+            await emitNotification(hostId, {
+              title: 'Visitor Checked Out',
+              body: `Visitor ${visitor.visitor_name} (Flat ${visitor.flat_no || ''}) has checked out and departed from the society.`,
+              type: 'info',
+              societyId: Number(societyId),
+              data: {
+                visitorId: visitor.visitorId || id,
+                societyId: Number(societyId),
+                flatNo: visitor.flat_no,
+                type: 'society_visitor',
+                status: 'checked_out',
+                checkOutTime: updatePayload.check_out_time,
+              },
+            });
+          } catch (_) {}
+        }
+
+        // 2. Notify Society Admins / Committee
+        try {
+          const admins = await SocietyMember.findAll({
+            where: { society_id: societyId, role: ['admin', 'committee'], status: 'active', is_deleted: false },
+          });
+          for (const admin of admins) {
+            if (Number(admin.user_id) !== Number(actorUserId) && Number(admin.user_id) !== Number(hostId)) {
+              await emitNotification(admin.user_id, {
+                title: 'Visitor Checked Out',
+                body: `${visitor.visitor_name} (Flat ${visitor.flat_no || 'N/A'}) has checked out of society campus.`,
+                type: 'info',
+                societyId: Number(societyId),
+                data: {
+                  visitorId: visitor.visitorId || id,
+                  societyId: Number(societyId),
+                  flatNo: visitor.flat_no,
+                  type: 'society_visitor',
+                  status: 'checked_out',
+                  checkOutTime: updatePayload.check_out_time,
+                },
+              });
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (notifErr) {
+      console.error('Error emitting visitor status notification:', notifErr);
+    }
+
     return visitor;
   } catch (error) {
     if (transaction && !transaction.finished) await transaction.rollback().catch(() => {});

@@ -39,8 +39,9 @@ export const createMember = async (societyId, actorUserId, memberData, meta = {}
       transaction,
     });
 
+    let member;
     if (existing) {
-      if (isStaffOnboarding || memberData.role) {
+      if (isStaffOnboarding) {
         existing.role = memberData.role || existing.role;
         existing.status = 'active';
         if (memberData.flat_no || memberData.trade) {
@@ -49,21 +50,27 @@ export const createMember = async (societyId, actorUserId, memberData, meta = {}
         await existing.save({ transaction });
         await transaction.commit();
         return existing;
+      } else {
+        existing.role = memberData.role || 'member';
+        existing.status = 'pending';
+        if (memberData.flat_no) {
+          existing.flat_no = memberData.flat_no;
+        }
+        await existing.save({ transaction });
+        member = existing;
       }
-      await transaction.commit();
-      return existing;
+    } else {
+      member = await SocietyMember.create({
+        society_id: societyId,
+        user_id: userId,
+        flat_no: memberData.flat_no || null,
+        role: memberData.role || 'member',
+        status: isStaffOnboarding ? 'active' : 'pending',
+        joined_at: new Date(),
+        created_by: userId,
+        created_at: new Date(),
+      }, { transaction });
     }
-
-    const member = await SocietyMember.create({
-      society_id: societyId,
-      user_id: userId,
-      flat_no: memberData.flat_no || null,
-      role: memberData.role || 'member',
-      status: isStaffOnboarding ? 'active' : (memberData.status || 'pending'),
-      joined_at: new Date(),
-      created_by: userId,
-      created_at: new Date(),
-    }, { transaction });
 
     await logSocietyAudit({
       societyId,
@@ -123,7 +130,7 @@ export const createMember = async (societyId, actorUserId, memberData, meta = {}
 
 export const getAllMembers = async (societyId, query = {}) => {
   const page = Math.max(1, parseInt(query.page) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(query.limit) || 20));
+  const limit = Math.min(500, Math.max(1, parseInt(query.limit) || 20));
   const offset = (page - 1) * limit;
 
   const where = { society_id: societyId, is_deleted: false };

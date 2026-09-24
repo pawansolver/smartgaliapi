@@ -184,18 +184,26 @@ export const resolveDisplayName = async (userId) => {
  * @param {string}  [opts.preferenceKey] — maps to NotificationPreference column
  * @param {boolean} [opts.sendPush=true] — whether to also fire FCM push
  */
-export const emitNotification = async ({
-  recipientId,
-  userId,
-  actorId = null,
-  type = 'info',
-  title,
-  message,
-  body,
-  data = null,
-  preferenceKey = null,
-  sendPush = true,
-}) => {
+// Dual signature support for emitNotification
+export const emitNotification = async (firstArg, secondArg) => {
+  let opts = {};
+  if (typeof firstArg === 'object' && firstArg !== null && !Array.isArray(firstArg)) {
+    opts = firstArg;
+  } else {
+    opts = { ...(secondArg || {}), recipientId: firstArg };
+  }
+  const {
+    recipientId,
+    userId,
+    actorId = null,
+    type = 'info',
+    title,
+    message,
+    body,
+    data = null,
+    preferenceKey = null,
+    sendPush = true,
+  } = opts;
   const targetUserId = recipientId || userId;
   const notifMessage = message || body || title || '';
   try {

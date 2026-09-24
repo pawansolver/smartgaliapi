@@ -104,7 +104,7 @@ export const sendInvitations = async (eventId, inviterId, inviteeIds, meta = {})
           createdInvitations.push(reloaded);
         }
       }
-    } else if (existing.is_deleted || existing.status === INVITATION_STATUS.DECLINED || existing.status === INVITATION_STATUS.CANCELLED || existing.status === INVITATION_STATUS.ACCEPTED) {
+    } else if (existing.is_deleted || existing.status === INVITATION_STATUS.DECLINED || existing.status === INVITATION_STATUS.CANCELLED) {
       // Re-invitation: reactivate existing record without breaking uix_event_invitee_del
       await existing.update({
         inviter_user_id: inviterId,
@@ -131,8 +131,7 @@ export const sendInvitations = async (eventId, inviterId, inviteeIds, meta = {})
         },
       }).catch(() => {});
     } else {
-      // Already active pending or accepted
-      createdInvitations.push(existing);
+      // Already active pending or accepted -> skip duplicate invite
     }
   }
 
