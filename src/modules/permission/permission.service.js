@@ -476,9 +476,10 @@ export const hasPermission = async (user, permissionCode, context = {}) => {
           if (allowedSocietyAdminPerms.includes(permissionCode)) {
             return true;
           }
-        } else if (sRole === 'resident' || sRole === 'member') {
+        } else if (sRole === 'resident' || sRole === 'member' || sRole === 'tenant') {
           const allowedSocietyResidentPerms = [
             'society.view', 'society.complaint.create', 'poll.create', 'poll.vote', 'event.create', 'event.rsvp',
+            'parking.read', 'parking.vehicle.read', 'parking.history.read', 'parking.violation.report',
           ];
           if (allowedSocietyResidentPerms.includes(permissionCode) && hasPlatformPerm) {
             return true;
@@ -595,6 +596,10 @@ export const hasPermission = async (user, permissionCode, context = {}) => {
             'gate.read',
             'shift.read',
             'security.dashboard.read',
+            'parking.visitor.read',
+            'parking.visitor.checkin',
+            'parking.visitor.checkout',
+            'parking.vehicle.verify',
           ];
           if (standardGuardPerms.includes(permissionCode)) {
             return true;

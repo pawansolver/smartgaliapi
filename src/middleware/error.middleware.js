@@ -43,8 +43,8 @@ export const errorHandler = (err, req, res, next) => {
     return errorResponse(res, 400, err.message);
   }
 
-  // Never leak stack traces or internal details to clients in production
-  return errorResponse(res, statusCode, message, env.isProduction ? undefined : err.stack);
+  // Never leak stack traces or internal details to clients
+  return errorResponse(res, statusCode, message);
 };
 
 /**

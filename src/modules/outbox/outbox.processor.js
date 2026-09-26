@@ -266,7 +266,17 @@ const handleSocietyEvent = async (event, context = {}) => {
     io.to(`society:${societyId}`).emit(event.event_type, payload);
   }
 
-  // 1. Visitor Arrived -> Notify Host Resident
+  // 1a. Visitor Created / Pre-approved
+  if (event.event_type === 'society.visitor_created' && societyId) {
+    if (io) {
+      io.to(`society:${societyId}`).emit('society:visitor_created', payload);
+      if (payload.hostUserId) {
+        io.to(`user:${payload.hostUserId}`).emit('society:visitor_created', payload);
+      }
+    }
+  }
+
+  // 1b. Visitor Arrived -> Notify Host Resident
   if (event.event_type === 'society.visitor_arrived' && payload.hostUserId) {
     if (io) {
       io.to(`user:${payload.hostUserId}`).emit('society:visitor_arrived', payload);

@@ -9,6 +9,7 @@ import { logSocietyAudit } from '../society_profile/society_audit_log.service.js
 import { createEvent } from '../outbox/outbox.service.js';
 import { invalidateUserPermissionCache } from '../permission/permission.service.js';
 import { emitNotification } from '../notification/notification.service.js';
+import Notification from '../notification/notification.model.js';
 
 /**
  * Enterprise Operational Module Definitions
@@ -756,9 +757,26 @@ export const acceptInvitation = async (invitationId, societyId, callerUserId, me
     }
 
     if (member.status === 'active') {
-      const err = new Error('Invitation has already been accepted');
-      err.statusCode = 400;
-      throw err;
+      // Idempotent: Member is already active
+      await transaction.commit();
+      // Ensure any invitation notifications for this user are marked as read and updated
+      try {
+        const userNotifs = await Notification.findAll({
+          where: { user_id: callerUserId, type: 'society_committee', is_deleted: false },
+        });
+        for (const n of userNotifs) {
+          let pData = n.data;
+          if (typeof pData === 'string') {
+            try { pData = JSON.parse(pData); } catch (_) {}
+          }
+          if (pData && (Number(pData.invitationId) === Number(invitationId) || Number(pData.committeeMemberId) === Number(invitationId))) {
+            pData.status = 'active';
+            pData.action = 'member_accepted';
+            await n.update({ is_read: true, data: pData }).catch(() => {});
+          }
+        }
+      } catch (_) {}
+      return member;
     }
 
     if (member.status === 'rejected') {
@@ -824,6 +842,24 @@ export const acceptInvitation = async (invitationId, societyId, callerUserId, me
 
     await transaction.commit();
 
+      // Ensure any invitation notifications for this user are marked as read and updated
+      try {
+        const userNotifs = await Notification.findAll({
+          where: { user_id: callerUserId, type: 'society_committee', is_deleted: false },
+        });
+        for (const n of userNotifs) {
+          let pData = n.data;
+          if (typeof pData === 'string') {
+            try { pData = JSON.parse(pData); } catch (_) {}
+          }
+          if (pData && (Number(pData.invitationId) === Number(invitationId) || Number(pData.committeeMemberId) === Number(invitationId))) {
+            pData.status = 'active';
+            pData.action = 'member_accepted';
+            await n.update({ is_read: true, data: pData }).catch(() => {});
+          }
+        }
+      } catch (_) {}
+
     if (member.invited_by) {
       try {
         const callerUser = await User.findByPk(callerUserId, { attributes: ['userName'] });
@@ -874,6 +910,12 @@ export const rejectInvitation = async (invitationId, societyId, callerUserId, me
       const err = new Error('Cannot decline an already active committee membership');
       err.statusCode = 400;
       throw err;
+    }
+
+    if (member.status === 'rejected') {
+      // Idempotent: Already rejected
+      await transaction.commit();
+      return member;
     }
 
     await member.update({
