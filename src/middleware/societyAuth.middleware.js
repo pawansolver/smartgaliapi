@@ -49,11 +49,11 @@ export const requireSocietyMember = async (req, res, next) => {
     const { societyId, society, membership, isOwner, effectiveRole, error } = await loadSocietyAccessContext(req);
     if (error) return errorResponse(res, ...error);
 
-    // Global Admin / Super Admin or Creator/Owner has full access
-    if (isOwner || policy.isGlobalAdminUser(req.user)) {
+    // Global Admin / Super Admin, Creator/Owner, or Society Admin has full access
+    if (isOwner || policy.isGlobalAdminUser(req.user) || effectiveRole === 'owner' || effectiveRole === 'admin' || (membership?.status === 'active' && membership?.role === 'admin')) {
       req.society = society;
       req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
-      req.societyContext = { societyId, society, membership: req.societyMembership, role: 'owner', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
+      req.societyContext = { societyId, society, membership: req.societyMembership, role: effectiveRole || 'admin', isOwner: isOwner || effectiveRole === 'owner', isSuperAdmin: policy.isGlobalAdminUser(req.user) };
       return next();
     }
 
@@ -77,7 +77,7 @@ export const requireSocietyMember = async (req, res, next) => {
 };
 
 /**
- * Middleware: Requires a specific society role (e.g. ['admin', 'committee', 'security']) with creator bypass.
+ * Middleware: Requires a specific society role (e.g. ['admin', 'committee', 'security']) with creator/admin bypass.
  */
 export const requireSocietyRole = (allowedRoles = ['admin', 'committee']) => {
   return async (req, res, next) => {
@@ -90,11 +90,11 @@ export const requireSocietyRole = (allowedRoles = ['admin', 'committee']) => {
       const { societyId, society, membership, isOwner, effectiveRole, error } = await loadSocietyAccessContext(req);
       if (error) return errorResponse(res, ...error);
 
-      // Global Admin / Super Admin or Creator/Owner has full access
-      if (isOwner || policy.isGlobalAdminUser(req.user)) {
+      // Global Admin / Super Admin, Creator/Owner, or Society Admin has full access
+      if (isOwner || policy.isGlobalAdminUser(req.user) || effectiveRole === 'owner' || effectiveRole === 'admin' || (membership?.status === 'active' && membership?.role === 'admin')) {
         req.society = society;
         req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
-        req.societyContext = { societyId, society, membership: req.societyMembership, role: 'owner', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
+        req.societyContext = { societyId, society, membership: req.societyMembership, role: effectiveRole || 'admin', isOwner: isOwner || effectiveRole === 'owner', isSuperAdmin: policy.isGlobalAdminUser(req.user) };
         return next();
       }
 
@@ -116,14 +116,13 @@ export const requireSocietyRole = (allowedRoles = ['admin', 'committee']) => {
   };
 };
 
-
 import { hasPermission } from '../modules/permission/permission.service.js';
 import SocietyGuardAuthorization from '../modules/society_guard/society_guard_authorization.model.js';
 import { SocietyCommitteeMember } from '../modules/society_committee/society_committee.model.js';
 
 /**
- * Middleware: Requires a specific granular society permission (e.g. 'guard.onboard', 'visitor.read').
- * Handles full creator/owner bypass, delegated committee members, and active guard checks.
+ * Middleware: Requires a specific granular society permission (e.g. 'parking.slot.create', 'parking.allocate').
+ * Strict RBAC: Handles creator/owner and society admin oversight, delegated committee members, and granular permission matrix.
  */
 export const requireSocietyPermission = (permissionCode) => {
   return async (req, res, next) => {
@@ -136,11 +135,11 @@ export const requireSocietyPermission = (permissionCode) => {
       const { societyId, society, membership, isOwner, effectiveRole, error } = await loadSocietyAccessContext(req);
       if (error) return errorResponse(res, ...error);
 
-      // Global Admin / Super Admin or Creator/Owner has full access
-      if (isOwner || policy.isGlobalAdminUser(req.user)) {
+      // Strict RBAC: Global Admin, Creator/Owner, or Society Admin has full oversight
+      if (isOwner || policy.isGlobalAdminUser(req.user) || effectiveRole === 'owner' || effectiveRole === 'admin' || (membership?.status === 'active' && membership?.role === 'admin')) {
         req.society = society;
         req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
-        req.societyContext = { societyId, society, membership: req.societyMembership, role: 'owner', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
+        req.societyContext = { societyId, society, membership: req.societyMembership, role: effectiveRole || 'admin', isOwner: isOwner || effectiveRole === 'owner', isSuperAdmin: policy.isGlobalAdminUser(req.user) };
         return next();
       }
 
@@ -163,7 +162,7 @@ export const requireSocietyPermission = (permissionCode) => {
         return errorResponse(res, 403, 'Forbidden: You do not have an active affiliation with this society');
       }
 
-      // Check granular permission
+      // Check granular permission against permission service
       const gateId = req.headers?.['x-gate-id'] || req.query?.gate_id || req.query?.gateId || req.body?.gate_id || req.body?.gateId || req.params?.gateId;
       const authorized = await hasPermission(req.user, permissionCode, { societyId, gateId });
       if (!authorized) {

@@ -364,6 +364,46 @@ export const updateViolationStatus = async (req, res, next) => {
   }
 };
 
+export const clampViolation = async (req, res, next) => {
+  try {
+    const societyId = getContextSocietyId(req);
+    const userId = req.user?.id || req.user?.userId;
+    const violation = await societyParkingService.clampViolation(societyId, req.params.id, userId, req.body, {
+      requestId: req.correlationId,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    return successResponse(res, 200, 'Wheel clamp applied to violating vehicle successfully', violation);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const resolveViolation = async (req, res, next) => {
+  try {
+    const societyId = getContextSocietyId(req);
+    const userId = req.user?.id || req.user?.userId;
+    const violation = await societyParkingService.resolveViolation(societyId, req.params.id, userId, req.body, {
+      requestId: req.correlationId,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    return successResponse(res, 200, 'Parking violation resolved successfully', violation);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getShiftSummary = async (req, res, next) => {
+  try {
+    const societyId = getContextSocietyId(req);
+    const summary = await societyParkingService.getParkingShiftSummary(societyId);
+    return successResponse(res, 200, 'Guard parking shift summary retrieved successfully', summary);
+  } catch (error) {
+    return next(error);
+  }
+};
+
 // ── History & Summary ──────────────────────────────────────────────────────
 export const getHistory = async (req, res, next) => {
   try {
@@ -465,6 +505,38 @@ export const deleteParking = async (req, res, next) => {
     });
     if (!parking) return errorResponse(res, 404, 'Society parking record not found');
     return successResponse(res, 200, 'Society parking deleted successfully');
+  } catch (error) {
+    return next(error);
+  }
+};
+
+
+export const approveVisitorEntry = async (req, res, next) => {
+  try {
+    const societyId = getContextSocietyId(req);
+    const actorUserId = req.user?.id || req.user?.userId;
+    const reservation = await societyParkingService.approveVisitorEntry(societyId, req.params.id, actorUserId, req.body?.remarks, {
+      requestId: req.correlationId,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    return successResponse(res, 200, 'Visitor gate clearance approved', reservation);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const declineVisitorEntry = async (req, res, next) => {
+  try {
+    const societyId = getContextSocietyId(req);
+    const actorUserId = req.user?.id || req.user?.userId;
+    const reason = req.body?.reason || req.body?.remarks || 'Declined by resident';
+    const reservation = await societyParkingService.declineVisitorEntry(societyId, req.params.id, actorUserId, reason, {
+      requestId: req.correlationId,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    return successResponse(res, 200, 'Visitor entry declined and turned away', reservation);
   } catch (error) {
     return next(error);
   }

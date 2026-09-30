@@ -9,6 +9,8 @@ import { normalizeRegistrationNumber } from './society_vehicle.model.js';
 
 export const VISITOR_PARKING_STATUS = Object.freeze({
   EXPECTED: 'expected',
+  AWAITING_APPROVAL: 'awaiting_approval',
+  DECLINED: 'declined',
   OCCUPIED: 'occupied',
   CHECKED_OUT: 'checked_out',
   EXPIRED: 'expired',
@@ -64,6 +66,24 @@ const ParkingVisitorReservation = sequelize.define('ParkingVisitorReservation', 
   vehicle_number: {
     type: DataTypes.STRING(50),
     allowNull: false,
+  },
+  vehicle_type: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    defaultValue: 'Car',
+  },
+  host_name: {
+    type: DataTypes.STRING(150),
+    allowNull: true,
+  },
+  gate_name: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    defaultValue: 'Main Gate 1',
+  },
+  qr_pass_code: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
   },
   normalized_vehicle_number: {
     type: DataTypes.STRING(50),

@@ -13,6 +13,8 @@ import SocietyMember from '../society_member/society_member.model.js';
 import User from '../user/user.model.js';
 import SocietyProfile from '../society_profile/society_profile.model.js';
 import SocietyGate from '../society_gate/society_gate.model.js';
+import SocietyGuardAuthorization from '../society_guard/society_guard_authorization.model.js';
+import { emitNotification } from '../notification/notification.service.js';
 import { createEvent } from '../outbox/outbox.service.js';
 import { logSocietyAudit } from '../society_profile/society_audit_log.service.js';
 import { logger } from '../../utils/logger.js';
@@ -77,6 +79,155 @@ export const logParkingAudit = async ({
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Real-Time Role-Based Notification Dispatch Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch active guards for this society
+ */
+export const getParkingGuardUserIds = async (societyId, excludeUserId = null) => {
+  const guardUserIds = new Set();
+  try {
+    const guards = await SocietyGuardAuthorization.findAll({
+      where: { society_id: societyId, status: 'active', is_deleted: false },
+      attributes: ['user_id'],
+    });
+    for (const g of guards) {
+      if (g.user_id && (!excludeUserId || Number(g.user_id) !== Number(excludeUserId))) {
+        guardUserIds.add(Number(g.user_id));
+      }
+    }
+  } catch (err) {
+    logger.warn('getParkingGuardUserIds', 'guard_auth_error', { societyId, error: err?.message });
+  }
+
+  try {
+    const staffMembers = await SocietyMember.findAll({
+      where: {
+        society_id: societyId,
+        role: ['staff', 'security', 'guard'],
+        status: 'active',
+        is_deleted: false,
+      },
+      attributes: ['user_id'],
+    });
+    for (const sm of staffMembers) {
+      if (sm.user_id && (!excludeUserId || Number(sm.user_id) !== Number(excludeUserId))) {
+        guardUserIds.add(Number(sm.user_id));
+      }
+    }
+  } catch (err) {
+    logger.warn('getParkingGuardUserIds', 'staff_members_error', { societyId, error: err?.message });
+  }
+
+  return Array.from(guardUserIds);
+};
+
+/**
+ * Fetch active admin & committee members
+ */
+export const getParkingAdminCommitteeUserIds = async (societyId, excludeUserId = null) => {
+  const userIds = new Set();
+  try {
+    const members = await SocietyMember.findAll({
+      where: {
+        society_id: societyId,
+        role: ['admin', 'committee', 'owner', 'president', 'secretary', 'treasurer'],
+        status: 'active',
+        is_deleted: false,
+      },
+      attributes: ['user_id'],
+    });
+    for (const m of members) {
+      if (m.user_id && (!excludeUserId || Number(m.user_id) !== Number(excludeUserId))) {
+        userIds.add(Number(m.user_id));
+      }
+    }
+  } catch (err) {
+    logger.warn('getParkingAdminCommitteeUserIds', 'fetch_error', { societyId, error: err?.message });
+  }
+  return Array.from(userIds);
+};
+
+/**
+ * Fetch resident user IDs for a given flat number
+ */
+export const getParkingResidentUserIdsByFlat = async (societyId, flatNo, excludeUserId = null) => {
+  if (!flatNo) return [];
+  const cleanFlat = String(flatNo).trim().toLowerCase();
+  const res = new Set();
+  try {
+    const members = await SocietyMember.findAll({
+      where: {
+        society_id: societyId,
+        status: 'active',
+        is_deleted: false,
+      },
+      attributes: ['user_id', 'flat_no'],
+    });
+    for (const m of members) {
+      if (m.flat_no && String(m.flat_no).trim().toLowerCase() === cleanFlat) {
+        if (m.user_id && (!excludeUserId || Number(m.user_id) !== Number(excludeUserId))) {
+          res.add(Number(m.user_id));
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn('getParkingResidentUserIdsByFlat', 'fetch_error', { societyId, flatNo, error: err?.message });
+  }
+  return Array.from(res);
+};
+
+/**
+ * Find registered owner of a vehicle by registration number
+ */
+export const getParkingVehicleOwnerUserId = async (societyId, registrationNumber, excludeUserId = null) => {
+  if (!registrationNumber) return null;
+  try {
+    const norm = normalizeRegistrationNumber(registrationNumber);
+    const vehicle = await SocietyVehicle.findOne({
+      where: { society_id: societyId, normalized_registration: norm, is_deleted: false },
+      attributes: ['owner_user_id'],
+    });
+    if (vehicle?.owner_user_id && (!excludeUserId || Number(vehicle.owner_user_id) !== Number(excludeUserId))) {
+      return Number(vehicle.owner_user_id);
+    }
+  } catch (err) {
+    logger.warn('getParkingVehicleOwnerUserId', 'fetch_error', { societyId, registrationNumber, error: err?.message });
+  }
+  return null;
+};
+
+/**
+ * Safe broadcast helper to send push and in-app notifications to one or multiple users
+ */
+export const sendParkingNotifications = async (userIds, { title, body, type = 'info', societyId, data = {} }, actorUserId = null) => {
+  if (!userIds) return;
+  const list = Array.isArray(userIds) ? userIds : [userIds];
+  const uniqueIds = Array.from(new Set(list)).filter((id) => id != null && (!actorUserId || Number(id) !== Number(actorUserId)));
+
+  for (const uid of uniqueIds) {
+    try {
+      await emitNotification(uid, {
+        title,
+        body,
+        type,
+        societyId: Number(societyId),
+        data: {
+          ...data,
+          societyId: Number(societyId),
+          type: 'society_parking',
+          module: 'parking',
+        },
+      });
+    } catch (notifErr) {
+      logger.warn('sendParkingNotifications', 'emit_failed', { recipientId: uid, title, error: notifErr?.message });
+    }
+  }
+};
+
 // 1. PARKING AREAS MANAGEMENT
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -369,6 +520,29 @@ export const blockParkingSlot = async (societyId, slotId, userId, reason, meta =
     reason,
   });
 
+  // Role-Based Notification: Notify Guards and Admin/Committee
+  try {
+    const guardIds = await getParkingGuardUserIds(societyId, userId);
+    await sendParkingNotifications(guardIds, {
+      title: '🚫 Parking Slot Blocked',
+      body: `Slot ${slot.slot_number} has been BLOCKED (${reason}). Do not park or permit vehicles.`,
+      type: 'alert',
+      societyId,
+      data: { slotNumber: slot.slot_number, action: 'blocked' },
+    }, userId);
+
+    const adminIds = await getParkingAdminCommitteeUserIds(societyId, userId);
+    await sendParkingNotifications(adminIds, {
+      title: '🚫 Parking Slot Blocked',
+      body: `Slot ${slot.slot_number} marked as BLOCKED (${reason}).`,
+      type: 'info',
+      societyId,
+      data: { slotNumber: slot.slot_number, action: 'blocked' },
+    }, userId);
+  } catch (err) {
+    logger.warn('blockParkingSlot', 'notification_failed', { error: err?.message });
+  }
+
   return slot;
 };
 
@@ -405,6 +579,20 @@ export const unblockParkingSlot = async (societyId, slotId, userId, meta = {}) =
     reason: 'Unblocked by management',
   });
 
+  // Role-Based Notification: Notify Guards
+  try {
+    const guardIds = await getParkingGuardUserIds(societyId, userId);
+    await sendParkingNotifications(guardIds, {
+      title: '✅ Parking Slot Unblocked',
+      body: `Slot ${slot.slot_number} is unblocked and now Available for parking.`,
+      type: 'info',
+      societyId,
+      data: { slotNumber: slot.slot_number, action: 'unblocked' },
+    }, userId);
+  } catch (err) {
+    logger.warn('unblockParkingSlot', 'notification_failed', { error: err?.message });
+  }
+
   return slot;
 };
 
@@ -437,6 +625,20 @@ export const setSlotMaintenance = async (societyId, slotId, userId, reason, meta
     newState: { status: newStatus },
     reason,
   });
+
+  // Role-Based Notification: Notify Guards
+  try {
+    const guardIds = await getParkingGuardUserIds(societyId, userId);
+    await sendParkingNotifications(guardIds, {
+      title: isEnding ? '✅ Slot Maintenance Finished' : '🛠️ Slot Under Maintenance',
+      body: `Slot ${slot.slot_number} ${isEnding ? 'maintenance finished - now Available' : `under maintenance (${reason})`}.`,
+      type: 'info',
+      societyId,
+      data: { slotNumber: slot.slot_number, action: action.toLowerCase() },
+    }, userId);
+  } catch (err) {
+    logger.warn('setSlotMaintenance', 'notification_failed', { error: err?.message });
+  }
 
   return slot;
 };
@@ -546,6 +748,30 @@ export const registerVehicle = async (societyId, userId, data, meta = {}) => {
     newState: { registration: vehicle.registration_number, make: vehicle.make, model: vehicle.model },
     reason: 'Vehicle registered in society database',
   });
+
+  // Role-Based Notification: Notify Resident and Guards
+  try {
+    if (ownerUserId) {
+      await sendParkingNotifications([ownerUserId], {
+        title: '🚘 Vehicle Registered',
+        body: `${vehicle.make} ${vehicle.model} (${vehicle.registration_number}) registered successfully for Flat ${vehicle.flat_number}.`,
+        type: 'info',
+        societyId,
+        data: { vehicleRegistration: vehicle.registration_number, flatNumber: vehicle.flat_number, action: 'vehicle_registered' },
+      });
+    }
+
+    const guardIds = await getParkingGuardUserIds(societyId, userId);
+    await sendParkingNotifications(guardIds, {
+      title: '🚘 New Resident Vehicle Registered',
+      body: `${vehicle.registration_number} (${vehicle.make} ${vehicle.model}) added for Flat ${vehicle.flat_number}.`,
+      type: 'info',
+      societyId,
+      data: { vehicleRegistration: vehicle.registration_number, flatNumber: vehicle.flat_number, action: 'vehicle_registered' },
+    }, userId);
+  } catch (err) {
+    logger.warn('registerVehicle', 'notification_failed', { error: err?.message });
+  }
 
   return vehicle;
 };
@@ -798,6 +1024,45 @@ export const allocateSlot = async (societyId, actorUserId, data, meta = {}) => {
     }, { transaction });
 
     await transaction.commit();
+
+    // Role-Based Notification Dispatch (Post-Commit)
+    try {
+      // 1. Resident
+      let residentIds = residentUserId ? [residentUserId] : [];
+      if (!residentIds.length && flatNumber) {
+        residentIds = await getParkingResidentUserIdsByFlat(societyId, flatNumber, actorUserId);
+      }
+      await sendParkingNotifications(residentIds, {
+        title: '🚗 Parking Slot Allocated',
+        body: `Slot ${slot.slot_number} has been allocated to Flat ${flatNumber} (${regNumber}).`,
+        type: 'info',
+        societyId,
+        data: { slotNumber: slot.slot_number, flatNumber, action: 'allocated', allocationId: allocation.id },
+      }, actorUserId);
+
+      // 2. Gate Guards
+      const guardIds = await getParkingGuardUserIds(societyId, actorUserId);
+      await sendParkingNotifications(guardIds, {
+        title: '🅿️ New Slot Allocation',
+        body: `Slot ${slot.slot_number} assigned to Flat ${flatNumber} (${regNumber}).`,
+        type: 'info',
+        societyId,
+        data: { slotNumber: slot.slot_number, flatNumber, action: 'allocated' },
+      }, actorUserId);
+
+      // 3. Admin & Committee
+      const adminIds = await getParkingAdminCommitteeUserIds(societyId, actorUserId);
+      await sendParkingNotifications(adminIds, {
+        title: '🅿️ Slot Allocation Updated',
+        body: `Slot ${slot.slot_number} allocated to Flat ${flatNumber} (${regNumber}).`,
+        type: 'info',
+        societyId,
+        data: { slotNumber: slot.slot_number, flatNumber, action: 'allocated' },
+      }, actorUserId);
+    } catch (notifErr) {
+      logger.warn('allocateSlot', 'notification_failed', { error: notifErr?.message });
+    }
+
     return allocation;
   } catch (error) {
     if (transaction && !transaction.finished) await transaction.rollback().catch(() => {});
@@ -914,6 +1179,48 @@ export const reassignSlot = async (societyId, allocationId, actorUserId, data, m
     }, { transaction });
 
     await transaction.commit();
+
+    // Role-Based Notification Dispatch (Post-Commit)
+    try {
+      // 1. Previous Resident
+      let prevResidentIds = currentAlloc.resident_user_id ? [currentAlloc.resident_user_id] : [];
+      if (!prevResidentIds.length && prevFlat) {
+        prevResidentIds = await getParkingResidentUserIdsByFlat(societyId, prevFlat, actorUserId);
+      }
+      await sendParkingNotifications(prevResidentIds, {
+        title: '🅿️ Parking Slot Reassigned',
+        body: `Your allocation for Slot ${slot.slot_number} has been transferred by management (${data.reason || 'Reassigned'}).`,
+        type: 'info',
+        societyId,
+        data: { slotNumber: slot.slot_number, action: 'reassigned' },
+      }, actorUserId);
+
+      // 2. New Resident
+      let newResidentIds = data.new_resident_user_id ? [data.new_resident_user_id] : [];
+      if (!newResidentIds.length && newFlat) {
+        newResidentIds = await getParkingResidentUserIdsByFlat(societyId, newFlat, actorUserId);
+      }
+      await sendParkingNotifications(newResidentIds, {
+        title: '🚗 Parking Slot Allocated',
+        body: `Slot ${slot.slot_number} has been reassigned to Flat ${newFlat} (${regNumber}).`,
+        type: 'info',
+        societyId,
+        data: { slotNumber: slot.slot_number, flatNumber: newFlat, action: 'allocated' },
+      }, actorUserId);
+
+      // 3. Gate Guards
+      const guardIds = await getParkingGuardUserIds(societyId, actorUserId);
+      await sendParkingNotifications(guardIds, {
+        title: '🅿️ Slot Reassigned',
+        body: `Slot ${slot.slot_number} reassigned to Flat ${newFlat} (${regNumber}).`,
+        type: 'info',
+        societyId,
+        data: { slotNumber: slot.slot_number, flatNumber: newFlat, action: 'reassigned' },
+      }, actorUserId);
+    } catch (notifErr) {
+      logger.warn('reassignSlot', 'notification_failed', { error: notifErr?.message });
+    }
+
     return newAlloc;
   } catch (error) {
     if (transaction && !transaction.finished) await transaction.rollback().catch(() => {});
@@ -979,6 +1286,35 @@ export const releaseSlot = async (societyId, allocationId, actorUserId, reason, 
     }, { transaction });
 
     await transaction.commit();
+
+    // Role-Based Notification Dispatch (Post-Commit)
+    try {
+      // 1. Resident
+      let residentIds = allocation.resident_user_id ? [allocation.resident_user_id] : [];
+      if (!residentIds.length && allocation.flat_number) {
+        residentIds = await getParkingResidentUserIdsByFlat(societyId, allocation.flat_number, actorUserId);
+      }
+      await sendParkingNotifications(residentIds, {
+        title: '🅿️ Parking Slot Released',
+        body: `Slot ${slot.slot_number} for Flat ${allocation.flat_number} has been released (${reason}).`,
+        type: 'info',
+        societyId,
+        data: { slotNumber: slot.slot_number, flatNumber: allocation.flat_number, action: 'released' },
+      }, actorUserId);
+
+      // 2. Guards & Admins
+      const guardIds = await getParkingGuardUserIds(societyId, actorUserId);
+      await sendParkingNotifications(guardIds, {
+        title: '🅿️ Slot Released to Available Pool',
+        body: `Slot ${slot.slot_number} (formerly Flat ${allocation.flat_number}) is now Available.`,
+        type: 'info',
+        societyId,
+        data: { slotNumber: slot.slot_number, action: 'released' },
+      }, actorUserId);
+    } catch (notifErr) {
+      logger.warn('releaseSlot', 'notification_failed', { error: notifErr?.message });
+    }
+
     return { success: true, message: `Slot '${slot.slot_number}' released and is now Available` };
   } catch (error) {
     if (transaction && !transaction.finished) await transaction.rollback().catch(() => {});
@@ -1004,25 +1340,47 @@ export const listVisitorReservations = async (societyId, query = {}) => {
     order: [['expected_arrival_at', 'DESC']],
   });
 
-  return reservations.map(r => ({
-    id: r.id,
-    societyId: r.society_id,
-    slotId: r.slot_id,
-    slotNumber: r.slot ? r.slot.slot_number : 'V-Bay',
-    visitorName: r.visitor_name,
-    vehicleNumber: r.vehicle_number,
-    hostUserId: r.host_user_id,
-    hostName: r.host?.name || 'Resident',
-    hostFlatNumber: r.host_flat_number,
-    expectedArrivalAt: r.expected_arrival_at,
-    expectedExitAt: r.expected_exit_at,
-    checkInAt: r.check_in_at,
-    checkOutAt: r.check_out_at,
-    checkInGateName: r.checkInGate?.gate_name || null,
-    status: r.status,
-    purpose: r.purpose,
-    notes: r.notes,
-  }));
+  return reservations.map(r => {
+    const qr = r.qr_pass_code || ('VPK-' + (Math.abs(Number(r.id)) % 90000 + 10000));
+    const gName = r.gate_name || r.checkInGate?.gate_name || 'Main Gate 1';
+    const hName = r.host_name || r.host?.name || 'Resident';
+    const vType = r.vehicle_type || 'Car';
+    return {
+      id: r.id,
+      societyId: r.society_id,
+      slotId: r.slot_id,
+      slotNumber: r.slot ? r.slot.slot_number : 'V-Bay',
+      slot_number: r.slot ? r.slot.slot_number : 'V-Bay',
+      visitorName: r.visitor_name,
+      visitor_name: r.visitor_name,
+      vehicleNumber: r.vehicle_number,
+      vehicle_number: r.vehicle_number,
+      vehicleType: vType,
+      vehicle_type: vType,
+      hostUserId: r.host_user_id,
+      hostName: hName,
+      host_name: hName,
+      hostFlatNumber: r.host_flat_number,
+      host_flat_number: r.host_flat_number,
+      hostFlat: r.host_flat_number,
+      expectedArrivalAt: r.expected_arrival_at,
+      expected_arrival_at: r.expected_arrival_at,
+      expectedExitAt: r.expected_exit_at,
+      expected_exit_at: r.expected_exit_at,
+      checkInAt: r.check_in_at,
+      check_in_at: r.check_in_at,
+      checkOutAt: r.check_out_at,
+      check_out_at: r.check_out_at,
+      checkInGateName: gName,
+      gateName: gName,
+      gate_name: gName,
+      qrPassCode: qr,
+      qr_pass_code: qr,
+      status: r.status,
+      purpose: r.purpose,
+      notes: r.notes,
+    };
+  });
 };
 
 export const preBookVisitorParking = async (societyId, hostUserId, data, meta = {}) => {
@@ -1037,7 +1395,7 @@ export const preBookVisitorParking = async (societyId, hostUserId, data, meta = 
     throw err;
   }
 
-  const hostFlatNumber = member.flat_no || 'Flat-General';
+  const hostFlatNumber = member.flat_no || data.host_flat_number || 'Flat-General';
 
   // Resolve visitor bay slot
   let slotId = data.visitor_bay_id || data.slot_id;
@@ -1106,14 +1464,19 @@ export const preBookVisitorParking = async (societyId, hostUserId, data, meta = 
 
   const normPlate = normalizeRegistrationNumber(data.vehicle_number);
 
+  const generatedQr = data.qr_pass_code || ('VPK-' + Math.floor(10000 + Math.random() * 90000));
   const reservation = await ParkingVisitorReservation.create({
     society_id: societyId,
     slot_id: slotId,
     host_user_id: hostUserId,
     host_member_id: member.id,
     host_flat_number: hostFlatNumber,
+    host_name: data.host_name || member.name || 'Resident',
     visitor_name: data.visitor_name.trim(),
     vehicle_number: data.vehicle_number.trim().toUpperCase(),
+    vehicle_type: data.vehicle_type || 'Car',
+    gate_name: data.gate_name || 'Main Gate 1',
+    qr_pass_code: generatedQr,
     normalized_vehicle_number: normPlate,
     expected_arrival_at: arrival,
     expected_exit_at: exit,
@@ -1148,6 +1511,42 @@ export const preBookVisitorParking = async (societyId, hostUserId, data, meta = 
     },
   });
 
+  // Role-Based Notification: Host Resident, Guards, Admin/Committee
+  try {
+    // 1. Host Resident confirmation
+    if (hostUserId) {
+      await sendParkingNotifications([hostUserId], {
+        title: '🎫 Guest Parking Pass Created',
+        body: `Pass ${reservation.qr_pass_code || 'VPK'} generated for ${reservation.visitor_name} (${reservation.vehicle_number}). Gate: ${reservation.gate_name || 'Main Gate'}.`,
+        type: 'info',
+        societyId,
+        data: { reservationId: reservation.id, qrPassCode: reservation.qr_pass_code, visitorName: reservation.visitor_name, action: 'pre_booked' },
+      });
+    }
+
+    // 2. All Gate Guards
+    const guardIds = await getParkingGuardUserIds(societyId, hostUserId);
+    await sendParkingNotifications(guardIds, {
+      title: '🚗 Expected Guest Vehicle',
+      body: `Flat ${hostFlatNumber} pre-booked parking for ${reservation.visitor_name} (${reservation.vehicle_number}) at ${reservation.gate_name || 'Main Gate'}.`,
+      type: 'info',
+      societyId,
+      data: { reservationId: reservation.id, hostFlat: hostFlatNumber, visitorName: reservation.visitor_name, vehicleNumber: reservation.vehicle_number, action: 'expected_visitor' },
+    }, hostUserId);
+
+    // 3. Admin & Committee
+    const adminIds = await getParkingAdminCommitteeUserIds(societyId, hostUserId);
+    await sendParkingNotifications(adminIds, {
+      title: '🚗 Guest Parking Pre-Booked',
+      body: `Flat ${hostFlatNumber} booked visitor parking for ${reservation.visitor_name} (${reservation.vehicle_number}).`,
+      type: 'info',
+      societyId,
+      data: { reservationId: reservation.id, hostFlat: hostFlatNumber, action: 'pre_booked' },
+    }, hostUserId);
+  } catch (err) {
+    logger.warn('preBookVisitorParking', 'notification_failed', { error: err?.message });
+  }
+
   return reservation;
 };
 
@@ -1178,13 +1577,18 @@ export const guardCheckInVisitor = async (societyId, guardUserId, data, meta = {
       throw err;
     }
 
+    const walkinQr = data.qr_pass_code || ('VPK-' + Math.floor(10000 + Math.random() * 90000));
     reservation = await ParkingVisitorReservation.create({
       society_id: societyId,
       slot_id: slotId,
       host_user_id: guardUserId,
       host_flat_number: data.host_flat_number || 'General',
+      host_name: data.host_name || 'Visitor Guest',
       visitor_name: data.visitor_name || 'Guest Visitor',
       vehicle_number: (data.vehicle_number || 'UNKNOWN').toUpperCase(),
+      vehicle_type: data.vehicle_type || 'Car',
+      gate_name: data.gate_name || 'Main Gate 1',
+      qr_pass_code: walkinQr,
       normalized_vehicle_number: normalizeRegistrationNumber(data.vehicle_number || 'UNKNOWN'),
       expected_arrival_at: new Date(),
       expected_exit_at: new Date(Date.now() + 4 * 3600 * 1000), // 4 hours default
@@ -1198,9 +1602,15 @@ export const guardCheckInVisitor = async (societyId, guardUserId, data, meta = {
     throw err;
   }
 
-  reservation.status = 'occupied';
-  reservation.check_in_at = new Date();
+  const isAwaiting = data.require_resident_approval !== undefined
+    ? Boolean(data.require_resident_approval)
+    : (data.status === 'awaiting_approval' || !data.reservation_id);
+  reservation.status = isAwaiting ? 'awaiting_approval' : 'occupied';
+  reservation.check_in_at = isAwaiting ? null : new Date();
   if (data.gate_id) reservation.check_in_gate_id = data.gate_id;
+  if (data.gate_name) reservation.gate_name = data.gate_name;
+  if (data.vehicle_type) reservation.vehicle_type = data.vehicle_type;
+  if (!reservation.qr_pass_code) reservation.qr_pass_code = 'VPK-' + (Math.abs(Number(reservation.id)) % 90000 + 10000);
   reservation.checked_in_by_guard_id = guardUserId;
   await reservation.save();
 
@@ -1227,6 +1637,32 @@ export const guardCheckInVisitor = async (societyId, guardUserId, data, meta = {
       hostFlatNumber: reservation.host_flat_number,
     },
   });
+
+  // Role-Based Notification: Host Resident & Admins
+  try {
+    let hostIds = reservation.host_user_id ? [reservation.host_user_id] : [];
+    if (!hostIds.length && reservation.host_flat_number) {
+      hostIds = await getParkingResidentUserIdsByFlat(societyId, reservation.host_flat_number, guardUserId);
+    }
+    await sendParkingNotifications(hostIds, {
+      title: '🟢 Guest Vehicle Checked In',
+      body: `${reservation.visitor_name} (${reservation.vehicle_number}) has checked in at ${reservation.gate_name || 'Gate'} and parked in Bay ${reservation.slot_number || 'Visitor Bay'}.`,
+      type: 'info',
+      societyId,
+      data: { reservationId: reservation.id, visitorName: reservation.visitor_name, vehicleNumber: reservation.vehicle_number, action: 'checked_in' },
+    }, guardUserId);
+
+    const adminIds = await getParkingAdminCommitteeUserIds(societyId, guardUserId);
+    await sendParkingNotifications(adminIds, {
+      title: '🟢 Visitor Vehicle Check-In',
+      body: `${reservation.visitor_name} (${reservation.vehicle_number}) entered for Flat ${reservation.host_flat_number}.`,
+      type: 'info',
+      societyId,
+      data: { reservationId: reservation.id, action: 'checked_in' },
+    }, guardUserId);
+  } catch (err) {
+    logger.warn('guardCheckInVisitor', 'notification_failed', { error: err?.message });
+  }
 
   return reservation;
 };
@@ -1257,6 +1693,7 @@ export const guardCheckOutVisitor = async (societyId, guardUserId, reservationId
   reservation.status = 'checked_out';
   reservation.check_out_at = checkOutTime;
   if (data.gate_id) reservation.check_out_gate_id = data.gate_id;
+  if (data.gate_name) reservation.gate_name = data.gate_name;
   reservation.checked_out_by_guard_id = guardUserId;
   await reservation.save();
 
@@ -1283,6 +1720,32 @@ export const guardCheckOutVisitor = async (societyId, guardUserId, reservationId
     },
   });
 
+  // Role-Based Notification: Host Resident & Admins
+  try {
+    let hostIds = reservation.host_user_id ? [reservation.host_user_id] : [];
+    if (!hostIds.length && reservation.host_flat_number) {
+      hostIds = await getParkingResidentUserIdsByFlat(societyId, reservation.host_flat_number, guardUserId);
+    }
+    await sendParkingNotifications(hostIds, {
+      title: '⚪ Guest Vehicle Departed',
+      body: `${reservation.visitor_name} (${reservation.vehicle_number}) has checked out through ${reservation.gate_name || 'Gate'}. Bay is now free.`,
+      type: 'info',
+      societyId,
+      data: { reservationId: reservation.id, visitorName: reservation.visitor_name, action: 'checked_out' },
+    }, guardUserId);
+
+    const adminIds = await getParkingAdminCommitteeUserIds(societyId, guardUserId);
+    await sendParkingNotifications(adminIds, {
+      title: '⚪ Visitor Vehicle Check-Out',
+      body: `${reservation.visitor_name} (${reservation.vehicle_number}) departed for Flat ${reservation.host_flat_number}.`,
+      type: 'info',
+      societyId,
+      data: { reservationId: reservation.id, action: 'checked_out' },
+    }, guardUserId);
+  } catch (err) {
+    logger.warn('guardCheckOutVisitor', 'notification_failed', { error: err?.message });
+  }
+
   return { success: true, message: 'Visitor checked out successfully', durationMinutes };
 };
 
@@ -1295,7 +1758,19 @@ export const reportParkingViolation = async (societyId, reporterUserId, data, me
     where: { society_id: societyId, user_id: reporterUserId, status: 'active', is_deleted: false },
   });
 
-  const reporterFlat = member?.flat_no || 'Flat-General';
+  const reporterFlat = member?.flat_no || data.reporter_flat || 'Flat-General';
+  const reporterName = member?.name || data.reporter_name || 'Resident';
+  const reporterRole = data.reporter_role || (member ? 'Resident' : 'Guard');
+  const offendingPlate = (data.unauthorized_vehicle_number || data.offending_vehicle_number || 'UNKNOWN').trim().toUpperCase();
+  const reasonCode = (data.reason_code || data.reason || 'Unauthorized vehicle in private bay').trim();
+
+  let initialStatus = 'OPEN';
+  if (data.status) {
+    const s = data.status.toLowerCase();
+    if (s === 'clamped') initialStatus = 'ACTION_TAKEN';
+    else if (s === 'reported') initialStatus = 'OPEN';
+    else initialStatus = data.status.toUpperCase();
+  }
 
   const violation = await ParkingViolation.create({
     society_id: societyId,
@@ -1303,10 +1778,16 @@ export const reportParkingViolation = async (societyId, reporterUserId, data, me
     slot_number: data.slot_number.trim(),
     reporter_user_id: reporterUserId,
     reporter_flat_number: reporterFlat,
-    unauthorized_vehicle_number: data.unauthorized_vehicle_number.trim().toUpperCase(),
-    reason_code: data.reason_code,
+    reporter_name: reporterName,
+    reporter_role: reporterRole,
+    unauthorized_vehicle_number: offendingPlate,
+    reason_code: reasonCode,
     remarks: data.remarks || null,
-    status: 'OPEN',
+    photo_url: data.photo_url || null,
+    clamp_number: data.clamp_number || null,
+    fine_amount: data.fine_amount != null ? parseFloat(data.fine_amount) : 0.00,
+    action_taken: data.action_taken || null,
+    status: initialStatus,
   });
 
   await logParkingAudit({
@@ -1332,19 +1813,112 @@ export const reportParkingViolation = async (societyId, reporterUserId, data, me
     },
   });
 
+  // Role-Based Notification: Guards, Admin/Committee, Offender
+  try {
+    const guardIds = await getParkingGuardUserIds(societyId, reporterUserId);
+    await sendParkingNotifications(guardIds, {
+      title: '🚨 Parking Violation Reported!',
+      body: `Unauthorized vehicle ${violation.unauthorized_vehicle_number} reported in Slot ${violation.slot_number} by Flat ${reporterFlat}. Immediate inspection required.`,
+      type: 'alert',
+      societyId,
+      data: { violationId: violation.id, slotNumber: violation.slot_number, unauthorizedVehicle: violation.unauthorized_vehicle_number, action: 'violation_reported' },
+    }, reporterUserId);
+
+    const adminIds = await getParkingAdminCommitteeUserIds(societyId, reporterUserId);
+    await sendParkingNotifications(adminIds, {
+      title: '⚠️ Parking Violation Reported',
+      body: `Slot ${violation.slot_number}: ${violation.unauthorized_vehicle_number} (${data.reason_code || 'Unauthorized Parking'}).`,
+      type: 'alert',
+      societyId,
+      data: { violationId: violation.id, slotNumber: violation.slot_number, action: 'violation_reported' },
+    }, reporterUserId);
+
+    const offenderUserId = await getParkingVehicleOwnerUserId(societyId, violation.unauthorized_vehicle_number, reporterUserId);
+    if (offenderUserId) {
+      await sendParkingNotifications([offenderUserId], {
+        title: '⚠️ Parking Violation Warning',
+        body: `Your vehicle ${violation.unauthorized_vehicle_number} was reported in Slot ${violation.slot_number}. Please relocate immediately to avoid penalty.`,
+        type: 'alert',
+        societyId,
+        data: { violationId: violation.id, slotNumber: violation.slot_number, action: 'violation_warning' },
+      });
+    }
+  } catch (err) {
+    logger.warn('reportParkingViolation', 'notification_failed', { error: err?.message });
+  }
+
   return violation;
 };
 
 export const listViolations = async (societyId, query = {}) => {
   const where = { society_id: societyId, is_deleted: false };
-  if (query.status) where.status = query.status;
+  if (query.status) {
+    let s = query.status;
+    if (s === 'reported') s = 'OPEN';
+    if (s === 'investigating') s = 'ACKNOWLEDGED';
+    if (s === 'clamped' || s === 'fine_levied') s = 'ACTION_TAKEN';
+    if (s === 'resolved') s = 'RESOLVED';
+    if (s === 'dismissed') s = 'DISMISSED';
+    where.status = s;
+  }
   if (query.reporter_user_id) where.reporter_user_id = query.reporter_user_id;
 
-  return ParkingViolation.findAll({
+  const list = await ParkingViolation.findAll({
     where,
     include: [{ model: User, as: 'reporter', attributes: ['userId', ['userName', 'name'], 'phone'] }],
     order: [['created_at', 'DESC']],
   });
+
+  return list.map(v => ({
+    id: v.id,
+    societyId: v.society_id,
+    society_id: v.society_id,
+    slotId: v.slot_id,
+    slot_id: v.slot_id,
+    slotNumber: v.slot_number,
+    slot_number: v.slot_number,
+    unauthorizedVehicleNumber: v.unauthorized_vehicle_number,
+    unauthorized_vehicle_number: v.unauthorized_vehicle_number,
+    offendingVehicleNumber: v.unauthorized_vehicle_number,
+    offending_vehicle_number: v.unauthorized_vehicle_number,
+    reporterUserId: v.reporter_user_id,
+    reporter_user_id: v.reporter_user_id,
+    reporterName: v.reporter_name || v.reporter?.name || 'Resident',
+    reporter_name: v.reporter_name || v.reporter?.name || 'Resident',
+    reporterFlatNumber: v.reporter_flat_number,
+    reporter_flat_number: v.reporter_flat_number,
+    reporterFlat: v.reporter_flat_number,
+    reporter_flat: v.reporter_flat_number,
+    reporterRole: v.reporter_role || 'Resident',
+    reporter_role: v.reporter_role || 'Resident',
+    reasonCode: v.reason_code,
+    reason_code: v.reason_code,
+    reason: v.reason_code,
+    remarks: v.remarks,
+    photoUrl: v.photo_url,
+    photo_url: v.photo_url,
+    clampNumber: v.clamp_number,
+    clamp_number: v.clamp_number,
+    fineAmount: parseFloat(v.fine_amount || 0),
+    fine_amount: parseFloat(v.fine_amount || 0),
+    actionTaken: v.action_taken,
+    action_taken: v.action_taken,
+    status: v.status,
+    assignedTo: v.assigned_to,
+    assigned_to: v.assigned_to,
+    acknowledgedAt: v.acknowledged_at,
+    acknowledged_at: v.acknowledged_at,
+    resolvedAt: v.resolved_at,
+    resolved_at: v.resolved_at,
+    resolvedBy: v.resolved_by,
+    resolved_by: v.resolved_by,
+    resolutionNotes: v.resolution_notes,
+    resolution_notes: v.resolution_notes,
+    createdAt: v.created_at,
+    created_at: v.created_at,
+    reportedAt: v.created_at,
+    reported_at: v.created_at,
+  }));
 };
 
 export const updateViolationStatus = async (societyId, violationId, actorUserId, data, meta = {}) => {
@@ -1358,21 +1932,213 @@ export const updateViolationStatus = async (societyId, violationId, actorUserId,
     throw err;
   }
 
-  violation.status = data.status;
+  let mappedStatus = data.status;
+  if (mappedStatus) {
+    const s = mappedStatus.toLowerCase();
+    if (s === 'reported') mappedStatus = 'OPEN';
+    else if (s === 'investigating') mappedStatus = 'ACKNOWLEDGED';
+    else if (s === 'clamped' || s === 'fine_levied') mappedStatus = 'ACTION_TAKEN';
+    else if (s === 'resolved') mappedStatus = 'RESOLVED';
+    else if (s === 'dismissed') mappedStatus = 'DISMISSED';
+    else mappedStatus = mappedStatus.toUpperCase();
+    violation.status = mappedStatus;
+  }
+
   if (data.assigned_to) violation.assigned_to = data.assigned_to;
-  if (data.status === 'ACKNOWLEDGED' && !violation.acknowledged_at) violation.acknowledged_at = new Date();
-  if (data.status === 'RESOLVED' || data.status === 'DISMISSED') {
+  if (data.clamp_number) violation.clamp_number = data.clamp_number;
+  if (data.fine_amount != null) violation.fine_amount = parseFloat(data.fine_amount);
+  if (data.action_taken) violation.action_taken = data.action_taken;
+  if (data.resolved_by) violation.resolved_by = data.resolved_by;
+
+  if (violation.status === 'ACKNOWLEDGED' && !violation.acknowledged_at) violation.acknowledged_at = new Date();
+  if (violation.status === 'RESOLVED' || violation.status === 'DISMISSED') {
     violation.resolved_at = new Date();
-    if (data.resolution_notes) violation.resolution_notes = data.resolution_notes;
+    if (data.resolution_notes || data.remarks) violation.resolution_notes = data.resolution_notes || data.remarks;
+    if (!violation.resolved_by && data.resolved_by) violation.resolved_by = data.resolved_by;
   }
 
   await violation.save();
+
+  await logParkingAudit({
+    societyId,
+    actorUserId,
+    action: `PARKING_VIOLATION_${violation.status}`,
+    targetType: 'violation',
+    targetId: violation.id,
+    slotNumber: violation.slot_number,
+    reason: data.action_taken || data.resolution_notes || data.remarks || `Status changed to ${violation.status}`,
+  });
+
+  return violation;
+};
+
+export const clampViolation = async (societyId, violationId, guardUserId, data, meta = {}) => {
+  const violation = await ParkingViolation.findOne({
+    where: { id: violationId, society_id: societyId, is_deleted: false },
+  });
+
+  if (!violation) {
+    const err = new Error('Parking violation record not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  violation.status = 'ACTION_TAKEN';
+  violation.clamp_number = data.clamp_number;
+  violation.fine_amount = data.fine_amount != null ? parseFloat(data.fine_amount) : 500.00;
+  violation.action_taken = data.action_taken || 'Wheel Clamp Applied';
+  if (data.remarks || data.notes) {
+    violation.remarks = violation.remarks ? `${violation.remarks}\nClamp Applied: ${data.remarks || data.notes}` : (data.remarks || data.notes);
+  }
+  await violation.save();
+
+  await logParkingAudit({
+    societyId,
+    actorUserId: guardUserId,
+    actorRole: 'Security Guard',
+    action: 'PARKING_VIOLATION_CLAMPED',
+    targetType: 'violation',
+    targetId: violation.id,
+    slotNumber: violation.slot_number,
+    reason: `Wheel clamp ${data.clamp_number} placed on ${violation.unauthorized_vehicle_number}. Fine: ₹${violation.fine_amount}`,
+  });
+
+  await createEvent({
+    event_type: 'society.parking_violation_clamped',
+    aggregate_type: 'parking_violation',
+    aggregate_id: String(violation.id),
+    payload: {
+      societyId,
+      violationId: violation.id,
+      clampNumber: violation.clamp_number,
+      fineAmount: violation.fine_amount,
+    },
+  });
+
+  // Role-Based Notification: Reporter, Offender, Admin/Committee
+  try {
+    let repIds = violation.reporter_user_id ? [violation.reporter_user_id] : [];
+    if (!repIds.length && violation.reporter_flat_number) {
+      repIds = await getParkingResidentUserIdsByFlat(societyId, violation.reporter_flat_number, guardUserId);
+    }
+    await sendParkingNotifications(repIds, {
+      title: '🗜️ Action Taken: Wheel Clamp Applied',
+      body: `Security applied clamp #${violation.clamp_number} on ${violation.unauthorized_vehicle_number} in Slot ${violation.slot_number}. Fine levied: ₹${violation.fine_amount}.`,
+      type: 'alert',
+      societyId,
+      data: { violationId: violation.id, clampNumber: violation.clamp_number, action: 'clamped' },
+    }, guardUserId);
+
+    const offenderUserId = await getParkingVehicleOwnerUserId(societyId, violation.unauthorized_vehicle_number, guardUserId);
+    if (offenderUserId) {
+      await sendParkingNotifications([offenderUserId], {
+        title: '🚨 WHEEL CLAMP APPLIED to Your Vehicle',
+        body: `Your vehicle ${violation.unauthorized_vehicle_number} has been clamped in Slot ${violation.slot_number} (Clamp #${violation.clamp_number}). Fine: ₹${violation.fine_amount}. Contact Security Gate.`,
+        type: 'alert',
+        societyId,
+        data: { violationId: violation.id, clampNumber: violation.clamp_number, fineAmount: violation.fine_amount, action: 'clamped' },
+      });
+    }
+
+    const adminIds = await getParkingAdminCommitteeUserIds(societyId, guardUserId);
+    await sendParkingNotifications(adminIds, {
+      title: '🗜️ Wheel Clamp Applied',
+      body: `Vehicle ${violation.unauthorized_vehicle_number} clamped in Slot ${violation.slot_number}. Fine: ₹${violation.fine_amount}.`,
+      type: 'alert',
+      societyId,
+      data: { violationId: violation.id, clampNumber: violation.clamp_number, action: 'clamped' },
+    }, guardUserId);
+  } catch (err) {
+    logger.warn('clampViolation', 'notification_failed', { error: err?.message });
+  }
+
+  return violation;
+};
+
+export const resolveViolation = async (societyId, violationId, actorUserId, data, meta = {}) => {
+  const violation = await ParkingViolation.findOne({
+    where: { id: violationId, society_id: societyId, is_deleted: false },
+  });
+
+  if (!violation) {
+    const err = new Error('Parking violation record not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  violation.status = 'RESOLVED';
+  violation.resolved_at = new Date();
+  violation.resolved_by = data.resolved_by || 'Security / Admin';
+  violation.action_taken = data.action_taken || 'Violation Resolved';
+  if (data.resolution_notes || data.remarks) {
+    violation.resolution_notes = data.resolution_notes || data.remarks;
+  }
+  await violation.save();
+
+  await logParkingAudit({
+    societyId,
+    actorUserId,
+    action: 'PARKING_VIOLATION_RESOLVED',
+    targetType: 'violation',
+    targetId: violation.id,
+    slotNumber: violation.slot_number,
+    reason: `Action: ${violation.action_taken}`,
+  });
+
+  // Role-Based Notification: Reporter Resident, Guards, Admin/Committee
+  try {
+    let repIds = violation.reporter_user_id ? [violation.reporter_user_id] : [];
+    if (!repIds.length && violation.reporter_flat_number) {
+      repIds = await getParkingResidentUserIdsByFlat(societyId, violation.reporter_flat_number, actorUserId);
+    }
+    await sendParkingNotifications(repIds, {
+      title: '✅ Parking Violation Resolved',
+      body: `The parking issue in Slot ${violation.slot_number} has been resolved: ${violation.action_taken}.`,
+      type: 'info',
+      societyId,
+      data: { violationId: violation.id, action: 'resolved' },
+    }, actorUserId);
+
+    const guardAndAdminIds = Array.from(new Set([
+      ...(await getParkingGuardUserIds(societyId, actorUserId)),
+      ...(await getParkingAdminCommitteeUserIds(societyId, actorUserId)),
+    ]));
+    await sendParkingNotifications(guardAndAdminIds, {
+      title: '✅ Violation Resolved',
+      body: `Violation for Slot ${violation.slot_number} (${violation.unauthorized_vehicle_number}) resolved by ${violation.resolved_by}.`,
+      type: 'info',
+      societyId,
+      data: { violationId: violation.id, action: 'resolved' },
+    }, actorUserId);
+  } catch (err) {
+    logger.warn('resolveViolation', 'notification_failed', { error: err?.message });
+  }
+
   return violation;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. AUDIT TRAIL & HISTORY
 // ─────────────────────────────────────────────────────────────────────────────
+
+const mapParkingAuditLog = (l) => ({
+  id: l.id,
+  societyId: l.society_id,
+  society_id: l.society_id,
+  actorUserId: l.actor_user_id,
+  actor_user_id: l.actor_user_id,
+  action: l.action,
+  targetType: l.target_type,
+  timestamp: l.created_at,
+  actorName: l.actor_name || 'Management',
+  actorRole: l.actor_role || 'Admin',
+  slotNumber: l.slot_number,
+  flatNumber: l.flat_number,
+  residentName: l.resident_name,
+  oldValue: (l.previous_state != null && l.previous_state !== 'null') ? (typeof l.previous_state === 'object' ? JSON.stringify(l.previous_state) : l.previous_state) : null,
+  newValue: (l.new_state != null && l.new_state !== 'null') ? (typeof l.new_state === 'object' ? JSON.stringify(l.new_state) : l.new_state) : null,
+  reason: l.reason,
+});
 
 export const getParkingHistory = async (societyId, query = {}) => {
   const where = { society_id: societyId };
@@ -1384,28 +2150,16 @@ export const getParkingHistory = async (societyId, query = {}) => {
     limit: Math.min(200, parseInt(query.limit) || 50),
   });
 
-  return logs.map(l => ({
-    id: l.id,
-    societyId: l.society_id,
-    action: l.action,
-    timestamp: l.created_at,
-    actorName: l.actor_name || 'Management',
-    actorRole: l.actor_role || 'Admin',
-    slotNumber: l.slot_number,
-    flatNumber: l.flat_number,
-    residentName: l.resident_name,
-    oldValue: typeof l.previous_state === 'object' ? JSON.stringify(l.previous_state) : l.previous_state,
-    newValue: typeof l.new_state === 'object' ? JSON.stringify(l.new_state) : l.new_state,
-    reason: l.reason,
-  }));
+  return logs.map(mapParkingAuditLog);
 };
 
 export const getMyParkingHistory = async (societyId, userId) => {
-  return ParkingAuditLog.findAll({
+  const logs = await ParkingAuditLog.findAll({
     where: { society_id: societyId, actor_user_id: userId },
     order: [['created_at', 'DESC']],
     limit: 50,
   });
+  return logs.map(mapParkingAuditLog);
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1535,4 +2289,145 @@ export const softDeleteParking = async (id, societyId, remarks, actorUserId, met
   parking.updated_by = actorUserId;
   await parking.save();
   return parking;
+};
+
+
+export const getParkingShiftSummary = async (societyId) => {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const [entriesToday, exitsToday, currentOccupied, allOverstay, pendingViolations, resolvedViolations, preBookedToday] = await Promise.all([
+    ParkingVisitorReservation.count({
+      where: {
+        society_id: societyId,
+        check_in_at: { [Op.gte]: startOfDay },
+        is_deleted: false,
+      },
+    }),
+    ParkingVisitorReservation.count({
+      where: {
+        society_id: societyId,
+        check_out_at: { [Op.gte]: startOfDay },
+        is_deleted: false,
+      },
+    }),
+    ParkingVisitorReservation.count({
+      where: {
+        society_id: societyId,
+        status: 'occupied',
+        is_deleted: false,
+      },
+    }),
+    ParkingVisitorReservation.count({
+      where: {
+        society_id: societyId,
+        status: 'occupied',
+        expected_exit_at: { [Op.lt]: new Date() },
+        is_deleted: false,
+      },
+    }),
+    ParkingViolation.count({
+      where: {
+        society_id: societyId,
+        status: { [Op.in]: ['OPEN', 'ACKNOWLEDGED', 'ACTION_TAKEN'] },
+        is_deleted: false,
+      },
+    }),
+    ParkingViolation.count({
+      where: {
+        society_id: societyId,
+        status: { [Op.in]: ['RESOLVED', 'DISMISSED'] },
+        is_deleted: false,
+      },
+    }),
+    ParkingVisitorReservation.count({
+      where: {
+        society_id: societyId,
+        check_in_at: { [Op.gte]: startOfDay },
+        created_at: { [Op.lt]: startOfDay },
+        is_deleted: false,
+      },
+    }),
+  ]);
+
+  return {
+    shiftStartTime: startOfDay,
+    shiftEndTime: new Date(),
+    guardName: 'Security Gate Desk',
+    gateName: 'Main Gate 1',
+    totalEntries: entriesToday,
+    totalExits: exitsToday,
+    vehiclesInside: currentOccupied,
+    overstayCount: allOverstay,
+    violationsPending: pendingViolations,
+    violationsResolved: resolvedViolations,
+    preBookedCleared: preBookedToday,
+  };
+};
+
+
+export const approveVisitorEntry = async (societyId, reservationId, actorUserId, remarks, meta = {}) => {
+  const reservation = await ParkingVisitorReservation.findOne({
+    where: { id: reservationId, society_id: societyId, is_deleted: false },
+    include: [{ model: ParkingSlot, as: 'slot' }],
+  });
+  if (!reservation) {
+    const err = new Error('Visitor reservation record not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  reservation.status = 'occupied';
+  reservation.check_in_at = new Date();
+  await reservation.save();
+
+  if (reservation.slot) {
+    reservation.slot.status = 'allocated';
+    await reservation.slot.save();
+  }
+
+  await logParkingAudit({
+    societyId,
+    actorUserId,
+    action: 'GATE_CLEARANCE_APPROVED',
+    targetType: 'visitor_reservation',
+    targetId: reservation.id,
+    slotNumber: reservation.slot ? reservation.slot.slot_number : 'V-Bay',
+    flatNumber: reservation.host_flat_number,
+    reason: remarks || 'Host resident approved visitor entry at gate barrier',
+  });
+
+  return reservation;
+};
+
+export const declineVisitorEntry = async (societyId, reservationId, actorUserId, reason, meta = {}) => {
+  const reservation = await ParkingVisitorReservation.findOne({
+    where: { id: reservationId, society_id: societyId, is_deleted: false },
+    include: [{ model: ParkingSlot, as: 'slot' }],
+  });
+  if (!reservation) {
+    const err = new Error('Visitor reservation record not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  reservation.status = 'declined';
+  await reservation.save();
+
+  // Release the visitor slot immediately back to available!
+  if (reservation.slot) {
+    reservation.slot.status = 'available';
+    await reservation.slot.save();
+  }
+
+  await logParkingAudit({
+    societyId,
+    actorUserId,
+    action: 'GATE_CLEARANCE_DECLINED',
+    targetType: 'visitor_reservation',
+    targetId: reservation.id,
+    slotNumber: reservation.slot ? reservation.slot.slot_number : 'V-Bay',
+    flatNumber: reservation.host_flat_number,
+    reason: reason || 'Host resident declined visitor entry. Vehicle strictly barred at gate.',
+  });
+
+  return reservation;
 };

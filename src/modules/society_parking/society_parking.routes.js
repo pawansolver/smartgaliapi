@@ -17,8 +17,12 @@ import {
   preBookVisitorSchema,
   guardCheckInSchema,
   guardCheckOutSchema,
+  approveVisitorSchema,
+  declineVisitorSchema,
   reportViolationSchema,
   updateViolationStatusSchema,
+  clampViolationSchema,
+  resolveViolationSchema,
 } from './society_parking.validation.js';
 import {
   idParamSchema,
@@ -251,6 +255,27 @@ router.post(
   requireSocietyPermission('parking.visitor.checkin'),
   validateBody(guardCheckInSchema),
   societyParkingController.guardCheckIn
+);
+
+// Resident Gate Clearance Approve & Decline
+router.post(
+  '/visitor-reservations/:id/approve',
+  authenticate,
+  societyMutationLimiter,
+  validateParams(idParamSchema),
+  requireSocietyMember,
+  validateBody(approveVisitorSchema),
+  societyParkingController.approveVisitorEntry
+);
+
+router.post(
+  '/visitor-reservations/:id/decline',
+  authenticate,
+  societyMutationLimiter,
+  validateParams(idParamSchema),
+  requireSocietyMember,
+  validateBody(declineVisitorSchema),
+  societyParkingController.declineVisitorEntry
 );
 
 // Guard Physical Check-Out (Guard / Gate Desk operation)

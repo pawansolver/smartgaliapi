@@ -1,7 +1,7 @@
 import Joi from 'joi';
 
 const id = Joi.number().integer().positive();
-const stringTrim = (min, max) => Joi.string().trim().min(min).max(max);
+const stringTrim = (min = 1, max = 255) => Joi.string().trim().min(min).max(max);
 
 // --- Areas ---
 export const createParkingAreaSchema = Joi.object({
@@ -9,20 +9,30 @@ export const createParkingAreaSchema = Joi.object({
     'string.empty': 'Area name is required',
   }),
   floor: stringTrim(1, 50).required().messages({
-    'string.empty': 'Floor level is required',
+    'string.empty': 'Floor identification is required',
   }),
-  parking_type: Joi.string().trim().valid('Covered Basement', 'Stilt Parking', 'Open Ground', 'Podium', 'Multi-level').default('Covered Basement'),
+  parking_type: Joi.string().trim().valid('Covered Basement', 'Open Ground', 'Podium', 'Multi-level Stilt', 'Visitor Zone', 'Open Surface').default('Covered Basement'),
   total_capacity: Joi.number().integer().min(1).max(5000).default(20),
-  status: Joi.string().trim().valid('active', 'maintenance').default('active'),
   notes: Joi.string().trim().max(1000).allow('', null).optional(),
+  require_resident_approval: Joi.boolean().optional(),
+  status: Joi.string().valid('awaiting_approval', 'occupied', 'expected', 'declined').optional(),
+});
+
+export const approveVisitorSchema = Joi.object({
+  remarks: Joi.string().trim().max(1000).allow('', null).optional(),
+});
+
+export const declineVisitorSchema = Joi.object({
+  reason: Joi.string().trim().max(1000).allow('', null).optional(),
+  remarks: Joi.string().trim().max(1000).allow('', null).optional(),
 });
 
 export const updateParkingAreaSchema = Joi.object({
   name: stringTrim(2, 150).optional(),
   floor: stringTrim(1, 50).optional(),
-  parking_type: Joi.string().trim().valid('Covered Basement', 'Stilt Parking', 'Open Ground', 'Podium', 'Multi-level').optional(),
+  parking_type: Joi.string().trim().valid('Covered Basement', 'Open Ground', 'Podium', 'Multi-level Stilt', 'Visitor Zone', 'Open Surface').optional(),
   total_capacity: Joi.number().integer().min(1).max(5000).optional(),
-  status: Joi.string().trim().valid('active', 'maintenance').optional(),
+  status: Joi.string().trim().valid('active', 'inactive', 'maintenance').optional(),
   notes: Joi.string().trim().max(1000).allow('', null).optional(),
 });
 
@@ -164,6 +174,9 @@ export const preBookVisitorSchema = Joi.object({
   vehicle_number: stringTrim(4, 50).required().messages({
     'string.empty': 'Vehicle registration plate is required',
   }),
+  vehicle_type: Joi.string().trim().max(50).default('Car').optional(),
+  gate_name: stringTrim(1, 100).default('Main Gate 1').optional(),
+  qr_pass_code: Joi.string().trim().max(100).allow('', null).optional(),
   expected_arrival_at: Joi.date().iso().required().messages({
     'any.required': 'Expected arrival datetime is required',
   }),
@@ -171,6 +184,8 @@ export const preBookVisitorSchema = Joi.object({
     'any.required': 'Expected exit datetime is required',
     'date.greater': 'Expected exit datetime must be strictly after arrival datetime',
   }),
+  host_flat_number: stringTrim(1, 50).allow('', null).optional(),
+  host_name: stringTrim(1, 150).allow('', null).optional(),
   purpose: stringTrim(1, 255).allow('', null).optional(),
   notes: Joi.string().trim().max(1000).allow('', null).optional(),
 });
@@ -181,13 +196,20 @@ export const guardCheckInSchema = Joi.object({
   slot_number: stringTrim(1, 100).optional(),
   visitor_name: stringTrim(2, 150).optional(),
   vehicle_number: stringTrim(4, 50).optional(),
+  vehicle_type: Joi.string().trim().max(50).default('Car').optional(),
+  gate_name: stringTrim(1, 100).default('Main Gate 1').optional(),
+  qr_pass_code: Joi.string().trim().max(100).allow('', null).optional(),
+  host_name: stringTrim(1, 150).allow('', null).optional(),
   host_flat_number: stringTrim(1, 50).optional(),
   gate_id: id.optional(),
   notes: Joi.string().trim().max(1000).allow('', null).optional(),
+  require_resident_approval: Joi.boolean().optional(),
+  status: Joi.string().valid('awaiting_approval', 'occupied', 'expected', 'declined').optional(),
 });
 
 export const guardCheckOutSchema = Joi.object({
   gate_id: id.optional(),
+  gate_name: Joi.string().trim().max(100).allow('', null).optional(),
   notes: Joi.string().trim().max(1000).allow('', null).optional(),
 });
 
@@ -197,17 +219,49 @@ export const reportViolationSchema = Joi.object({
   slot_number: stringTrim(1, 100).required().messages({
     'string.empty': 'Slot number is required',
   }),
-  unauthorized_vehicle_number: stringTrim(4, 50).required().messages({
-    'string.empty': 'Offending vehicle registration number is required',
-  }),
-  reason_code: stringTrim(2, 100).required().messages({
-    'string.empty': 'Violation reason is required',
-  }),
+  unauthorized_vehicle_number: Joi.string().trim().max(50).optional(),
+  offending_vehicle_number: Joi.string().trim().max(50).optional(),
+  reason_code: Joi.string().trim().max(100).optional(),
+  reason: Joi.string().trim().max(100).optional(),
+  reporter_name: stringTrim(1, 150).allow('', null).optional(),
+  reporter_flat: stringTrim(1, 50).allow('', null).optional(),
+  reporter_role: stringTrim(1, 50).allow('', null).optional(),
   remarks: Joi.string().trim().max(1000).allow('', null).optional(),
-});
+  photo_url: Joi.string().trim().max(500).allow('', null).optional(),
+  clamp_number: Joi.string().trim().max(50).allow('', null).optional(),
+  fine_amount: Joi.number().min(0).optional(),
+  action_taken: Joi.string().trim().max(100).allow('', null).optional(),
+}).or('unauthorized_vehicle_number', 'offending_vehicle_number');
 
 export const updateViolationStatusSchema = Joi.object({
-  status: Joi.string().trim().valid('OPEN', 'ACKNOWLEDGED', 'ACTION_TAKEN', 'RESOLVED', 'DISMISSED').required(),
+  status: Joi.string().trim().valid(
+    'OPEN', 'ACKNOWLEDGED', 'ACTION_TAKEN', 'RESOLVED', 'DISMISSED',
+    'reported', 'investigating', 'clamped', 'fine_levied', 'resolved', 'dismissed'
+  ).optional(),
   assigned_to: id.allow(null).optional(),
   resolution_notes: Joi.string().trim().max(1000).allow('', null).optional(),
+  remarks: Joi.string().trim().max(1000).allow('', null).optional(),
+  clamp_number: Joi.string().trim().max(50).allow('', null).optional(),
+  fine_amount: Joi.number().min(0).optional(),
+  action_taken: Joi.string().trim().max(100).allow('', null).optional(),
+  resolved_by: Joi.string().trim().max(100).allow('', null).optional(),
+});
+
+export const clampViolationSchema = Joi.object({
+  clamp_number: stringTrim(1, 50).required().messages({
+    'string.empty': 'Clamp number is required',
+  }),
+  fine_amount: Joi.number().min(0).default(500.0),
+  action_taken: Joi.string().trim().max(100).default('Wheel Clamp Applied'),
+  remarks: Joi.string().trim().max(1000).allow('', null).optional(),
+  notes: Joi.string().trim().max(1000).allow('', null).optional(),
+});
+
+export const resolveViolationSchema = Joi.object({
+  action_taken: stringTrim(1, 100).required().messages({
+    'string.empty': 'Action taken description is required',
+  }),
+  resolved_by: Joi.string().trim().max(100).allow('', null).optional(),
+  resolution_notes: Joi.string().trim().max(1000).allow('', null).optional(),
+  remarks: Joi.string().trim().max(1000).allow('', null).optional(),
 });

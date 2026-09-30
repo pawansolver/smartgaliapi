@@ -50,6 +50,36 @@ const ParkingViolation = sequelize.define('ParkingViolation', {
     type: DataTypes.STRING(50),
     allowNull: false,
   },
+  reporter_name: {
+    type: DataTypes.STRING(150),
+    allowNull: true,
+  },
+  reporter_role: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    defaultValue: 'Resident',
+  },
+  photo_url: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
+  clamp_number: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
+  fine_amount: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0.00,
+  },
+  action_taken: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  resolved_by: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
   unauthorized_vehicle_number: {
     type: DataTypes.STRING(50),
     allowNull: false,
