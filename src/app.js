@@ -58,6 +58,8 @@ app.use(cors({
     'Origin',
     'x-society-id',
     'X-Society-Id',
+    'x-simulated-role',
+    'X-Simulated-Role',
     'x-request-id',
     'X-Request-Id',
   ],

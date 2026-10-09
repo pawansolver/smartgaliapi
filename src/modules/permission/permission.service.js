@@ -488,12 +488,17 @@ export const hasPermission = async (user, permissionCode, context = {}) => {
       }
 
       // 4c. Delegated Committee Granular Permissions Check
+      const todayDateStr = new Date().toISOString().split('T')[0];
       const commMembers = await SocietyCommitteeMember.findAll({
         where: {
           society_id: context.societyId,
           user_id: userId,
           status: 'active',
           is_deleted: false,
+          [Op.or]: [
+            { end_date: null },
+            { end_date: { [Op.gte]: todayDateStr } },
+          ],
         },
         include: [{
           model: SocietyCommittee,

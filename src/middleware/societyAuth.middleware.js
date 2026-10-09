@@ -3,14 +3,52 @@ import SocietyMember from '../modules/society_member/society_member.model.js';
 import { errorResponse } from '../utils/response.js';
 import * as policy from '../modules/society_profile/society.policy.js';
 
-export const resolveSocietyId = (req) =>
-  req.headers?.['x-society-id'] || req.query?.society_id || req.query?.societyId || req.body?.society_id || req.body?.societyId || req.params.societyId || req.params.id;
+export const resolveSocietyId = async (req) => {
+  let sId = req.headers?.['x-society-id'] || req.query?.society_id || req.query?.societyId || req.body?.society_id || req.body?.societyId || req.params?.societyId;
+  if (sId) return Number(sId);
+
+  // If this is a document route (/society-documents/:id), req.params.id is the document ID
+  const isDocRoute = req.baseUrl?.includes('society-document') || req.originalUrl?.includes('society-document');
+  if (isDocRoute && req.params?.id) {
+    try {
+      const { default: SocietyDocument } = await import('../modules/society_document/society_document.model.js');
+      const doc = await SocietyDocument.findByPk(req.params.id);
+      if (doc && doc.society_id) {
+        req.document = doc;
+        return Number(doc.society_id);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // If not a document route, req.params.id might be a societyId (e.g. /societies/:id)
+  if (!isDocRoute && req.params?.id) {
+    return Number(req.params.id);
+  }
+
+  // Fallback to caller's active society membership
+  const userId = req.user?.id || req.user?.userId;
+  if (userId) {
+    try {
+      const member = await SocietyMember.findOne({
+        where: { user_id: userId, status: 'active', is_deleted: false },
+        order: [['id', 'ASC']],
+      });
+      if (member) return Number(member.society_id);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  return null;
+};
 
 /**
  * Loads and caches the active Society and caller's SocietyMember context on the request.
  */
 export const loadSocietyAccessContext = async (req) => {
-  const societyId = resolveSocietyId(req);
+  const societyId = await resolveSocietyId(req);
   if (!societyId) {
     return { error: [400, 'Society ID is required'] };
   }
@@ -54,6 +92,8 @@ export const requireSocietyMember = async (req, res, next) => {
       req.society = society;
       req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
       req.societyContext = { societyId, society, membership: req.societyMembership, role: effectiveRole || 'admin', isOwner: isOwner || effectiveRole === 'owner', isSuperAdmin: policy.isGlobalAdminUser(req.user) };
+      req.societyId = societyId;
+      req.societyRole = effectiveRole || membership?.role || (isOwner ? 'owner' : 'admin');
       return next();
     }
 
@@ -70,6 +110,8 @@ export const requireSocietyMember = async (req, res, next) => {
     req.society = society;
     req.societyMembership = membership;
     req.societyContext = { societyId, society, membership, role: effectiveRole, isOwner: false };
+    req.societyId = societyId;
+    req.societyRole = effectiveRole || membership?.role || 'resident';
     return next();
   } catch (error) {
     return next(error);
@@ -95,6 +137,8 @@ export const requireSocietyRole = (allowedRoles = ['admin', 'committee']) => {
         req.society = society;
         req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
         req.societyContext = { societyId, society, membership: req.societyMembership, role: effectiveRole || 'admin', isOwner: isOwner || effectiveRole === 'owner', isSuperAdmin: policy.isGlobalAdminUser(req.user) };
+        req.societyId = societyId;
+        req.societyRole = effectiveRole || membership?.role || (isOwner ? 'owner' : 'admin');
         return next();
       }
 
@@ -109,6 +153,8 @@ export const requireSocietyRole = (allowedRoles = ['admin', 'committee']) => {
       req.society = society;
       req.societyMembership = membership;
       req.societyContext = { societyId, society, membership, role: effectiveRole, isOwner: false };
+      req.societyId = societyId;
+      req.societyRole = effectiveRole || membership?.role || 'resident';
       return next();
     } catch (error) {
       return next(error);
@@ -140,6 +186,8 @@ export const requireSocietyPermission = (permissionCode) => {
         req.society = society;
         req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
         req.societyContext = { societyId, society, membership: req.societyMembership, role: effectiveRole || 'admin', isOwner: isOwner || effectiveRole === 'owner', isSuperAdmin: policy.isGlobalAdminUser(req.user) };
+        req.societyId = societyId;
+        req.societyRole = effectiveRole || membership?.role || (isOwner ? 'owner' : 'admin');
         return next();
       }
 
@@ -152,8 +200,19 @@ export const requireSocietyPermission = (permissionCode) => {
         if (activeGuard) hasAffiliation = true;
       }
       if (!hasAffiliation) {
+        const { Op: seqOp } = await import('sequelize');
+        const todayAffilDateStr = new Date().toISOString().split('T')[0];
         const activeCommitteeMember = await SocietyCommitteeMember.findOne({
-          where: { society_id: societyId, user_id: userId, status: 'active', is_deleted: false },
+          where: {
+            society_id: societyId,
+            user_id: userId,
+            status: 'active',
+            is_deleted: false,
+            [seqOp.or]: [
+              { end_date: null },
+              { end_date: { [seqOp.gte]: todayAffilDateStr } },
+            ],
+          },
         });
         if (activeCommitteeMember) hasAffiliation = true;
       }

@@ -79,6 +79,13 @@ export const OPERATIONAL_MODULES = {
     description: 'Parking slots, vehicle authorization & stickers',
     match: (p) => p.permission_code.startsWith('society.parking.'),
   },
+  document: {
+    key: 'document',
+    label: 'Document Governance',
+    icon: 'description',
+    description: 'Society official documents, bye-laws, circulars & resolutions',
+    match: (p) => p.module === 'society_document' || p.permission_code.startsWith('society_document.'),
+  },
   committee: {
     key: 'committee',
     label: 'Governance & Committees',
@@ -111,7 +118,7 @@ export const COMMITTEE_CATEGORIES = [
     key: 'operations',
     label: 'Operations Committee',
     description: 'General administrative society operations, notices, and parking',
-    recommended_modules: ['visitor', 'gate', 'parking', 'notice'],
+    recommended_modules: ['visitor', 'gate', 'parking', 'notice', 'document'],
   },
   {
     key: 'garden',

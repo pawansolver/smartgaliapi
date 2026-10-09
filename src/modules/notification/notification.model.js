@@ -9,6 +9,14 @@ const Notification = sequelize.define('Notification', {
     primaryKey: true,
     autoIncrement: true,
   },
+  society_id: {
+    type: DataTypes.BIGINT,
+    allowNull: true,
+  },
+  idempotency_key: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
   user_id: {
     type: DataTypes.BIGINT,
     allowNull: true,

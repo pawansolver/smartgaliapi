@@ -335,12 +335,30 @@ export const listVisitorQuerySchema = Joi.object({
   status: Joi.string().valid(...Object.values(VISITOR_STATUS)).optional(),
   flat_no: Joi.string().trim().max(50).optional(),
 });
-// â”€â”€ Society Document Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Society Document Schemas (Enterprise Lifecycle & RBAC) ──────────────
 export const createDocumentSchema = Joi.object({
   society_id: id.optional(),
   title: Joi.string().trim().min(2).max(255).required(),
+  document_number: Joi.string().trim().max(100).allow('', null).optional(),
+  version: Joi.string().trim().max(20).default('1.0').optional(),
   description: Joi.string().trim().allow('', null).optional(),
   category: Joi.string().trim().max(50).default('general').optional(),
+  priority: Joi.string().trim().valid('normal', 'important', 'urgent').default('normal').optional(),
+  visibility: Joi.string().trim().valid('all', 'resident', 'committee', 'admin', 'security', 'maintenance', 'specific_roles').default('all').optional(),
+  allowed_roles: Joi.alternatives().try(
+    Joi.array().items(Joi.string().trim()),
+    Joi.string().trim().allow('', null)
+  ).optional(),
+  tags: Joi.alternatives().try(
+    Joi.array().items(Joi.string().trim()),
+    Joi.string().trim().allow('', null)
+  ).optional(),
+  status: Joi.string().trim().valid('draft', 'under_review', 'approved', 'published', 'archived').default('published').optional(),
+  requires_approval: Joi.boolean().default(false).optional(),
+  acknowledgement_required: Joi.boolean().default(false).optional(),
+  effective_from: Joi.date().iso().allow(null).optional(),
+  expiry_date: Joi.date().iso().allow(null).optional(),
+  scheduled_publish_at: Joi.date().iso().allow(null).optional(),
   file_url: Joi.string().trim().max(500).optional(),
   file_type: Joi.string().trim().max(50).optional(),
   file_size: Joi.number().integer().min(0).optional(),
@@ -348,8 +366,29 @@ export const createDocumentSchema = Joi.object({
 
 export const updateDocumentSchema = Joi.object({
   title: Joi.string().trim().min(2).max(255).optional(),
+  document_number: Joi.string().trim().max(100).allow('', null).optional(),
+  version: Joi.string().trim().max(20).optional(),
   description: Joi.string().trim().allow('', null).optional(),
   category: Joi.string().trim().max(50).optional(),
+  priority: Joi.string().trim().valid('normal', 'important', 'urgent').optional(),
+  visibility: Joi.string().trim().valid('all', 'resident', 'committee', 'admin', 'security', 'maintenance', 'specific_roles').optional(),
+  allowed_roles: Joi.alternatives().try(
+    Joi.array().items(Joi.string().trim()),
+    Joi.string().trim().allow('', null)
+  ).optional(),
+  tags: Joi.alternatives().try(
+    Joi.array().items(Joi.string().trim()),
+    Joi.string().trim().allow('', null)
+  ).optional(),
+  status: Joi.string().trim().valid('draft', 'under_review', 'approved', 'published', 'archived').optional(),
+  requires_approval: Joi.boolean().optional(),
+  acknowledgement_required: Joi.boolean().optional(),
+  effective_from: Joi.date().iso().allow(null).optional(),
+  expiry_date: Joi.date().iso().allow(null).optional(),
+  scheduled_publish_at: Joi.date().iso().allow(null).optional(),
+  file_url: Joi.string().trim().max(500).optional(),
+  file_type: Joi.string().trim().max(50).optional(),
+  file_size: Joi.number().integer().min(0).optional(),
 }).min(1);
 
 export const listDocumentQuerySchema = Joi.object({
@@ -357,6 +396,29 @@ export const listDocumentQuerySchema = Joi.object({
   society_id: id.optional(),
   category: Joi.string().trim().optional(),
   search: Joi.string().trim().allow('', null).optional(),
+  status: Joi.string().trim().optional(),
+  priority: Joi.string().trim().optional(),
+  visibility: Joi.string().trim().optional(),
+  role: Joi.string().trim().optional(),
+});
+
+export const createDocumentVersionSchema = Joi.object({
+  society_id: id.optional(),
+  version: Joi.string().trim().min(1).max(20).required(),
+  title: Joi.string().trim().min(2).max(255).optional(),
+  change_summary: Joi.string().trim().allow('', null).optional(),
+  file_url: Joi.string().trim().max(500).optional(),
+  file_type: Joi.string().trim().max(50).optional(),
+  file_size: Joi.number().integer().min(0).optional(),
+});
+
+export const updateDocumentStatusSchema = Joi.object({
+  status: Joi.string().trim().valid('draft', 'under_review', 'approved', 'published', 'archived').required(),
+  reason: Joi.string().trim().max(255).allow('', null).optional(),
+});
+
+export const acknowledgeDocumentSchema = Joi.object({
+  version: Joi.string().trim().max(20).optional(),
 });
 
 // â”€â”€ Society Emergency Contact Schemas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

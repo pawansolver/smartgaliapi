@@ -15,6 +15,7 @@ import Community from '../community/community.model.js';
 import CommunityMember from '../communityMember/communityMember.model.js';
 import SocietyMember from '../society_member/society_member.model.js';
 import SocietyProfile from '../society_profile/society_profile.model.js';
+import { dispatchDocumentNotification } from '../society_document/society_document_notification.service.js';
 
 export const processorDeps = {
   loadOutboxEvent: (id) => OutboxEvent.findByPk(id),
@@ -370,6 +371,13 @@ const handleSocietyEvent = async (event, context = {}) => {
     })));
   }
 
+  // 5. Document Lifecycle & Notification Events
+  if (event.event_type.startsWith('society.document_') || event.event_type.startsWith('society.resident_document_')) {
+    await dispatchDocumentNotification(event.event_type, payload).catch(err => {
+      logger.error('OUTBOX', 'document_notification_dispatch_failed', { eventId: event.id, error: err.message });
+    });
+  }
+
   logger.info('OUTBOX', 'society_event_processed', { eventId: event.id, eventType: event.event_type, societyId });
 };
 
@@ -447,6 +455,23 @@ const handlers = {
   'society.poll_created': handleSocietyEvent,
   'society.poll_voted': handleSocietyEvent,
   'society.poll_closed': handleSocietyEvent,
+  'society.document_uploaded': handleSocietyEvent,
+  'society.document_created': handleSocietyEvent,
+  'society.document_submitted_for_review': handleSocietyEvent,
+  'society.document_reviewed': handleSocietyEvent,
+  'society.document_approved': handleSocietyEvent,
+  'society.document_published': handleSocietyEvent,
+  'society.document_rejected': handleSocietyEvent,
+  'society.document_archived': handleSocietyEvent,
+  'society.document_version_published': handleSocietyEvent,
+  'society.document_acknowledgement_required': handleSocietyEvent,
+  'society.document_expiring': handleSocietyEvent,
+  'society.document_expired': handleSocietyEvent,
+  'society.document_acknowledged': handleSocietyEvent,
+  'society.resident_document_shared': handleSocietyEvent,
+  'society.resident_document_reviewed': handleSocietyEvent,
+  'society.resident_document_verified': handleSocietyEvent,
+  'society.resident_document_rejected': handleSocietyEvent,
 
 };
 

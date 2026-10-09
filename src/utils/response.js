@@ -36,3 +36,14 @@ export const errorResponse = (res, statusCode = 500, message = 'Internal Server 
 
   return res.status(statusCode).json(response);
 };
+
+/**
+ * Backward compatibility wrappers
+ */
+export const sendSuccess = (res, data = null, message = 'Success', statusCode = 200, meta = null) => {
+  return successResponse(res, statusCode, message, data, meta?.pagination || null);
+};
+
+export const sendError = (res, message = 'Internal Server Error', statusCode = 500, errors = null) => {
+  return errorResponse(res, statusCode, message, errors);
+};

@@ -93,7 +93,15 @@ process.once('SIGINT', () => shutdown('SIGINT'));
 process.once('SIGTERM', () => shutdown('SIGTERM'));
 process.once('SIGUSR2', async () => {
   await shutdown('SIGUSR2');
-  process.kill(process.pid, 'SIGUSR2');
+  if (process.platform === 'win32') {
+    process.exit(0);
+  } else {
+    try {
+      process.kill(process.pid, 'SIGUSR2');
+    } catch {
+      process.exit(0);
+    }
+  }
 });
 
 // Handle unhandled promise rejections

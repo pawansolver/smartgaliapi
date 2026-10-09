@@ -32,6 +32,7 @@ import societySecurityRoutes from '../modules/society_security/society_security.
 import societyParkingRoutes from '../modules/society_parking/society_parking.routes.js';
 import societyPollRoutes from '../modules/society_poll/society_poll.routes.js';
 import societyDocumentRoutes from '../modules/society_document/society_document.routes.js';
+import residentDocumentRoutes from '../modules/society_document/resident_document.routes.js';
 import societyEmergencyContactRoutes from '../modules/society_emergency_contact/society_emergency_contact.routes.js';
 import societyWorkerRoutes from '../modules/society_worker/society_worker.routes.js';
 import mediaFileRoutes from '../modules/media_file/media_file.routes.js';
@@ -119,6 +120,8 @@ router.use('/society-parking', societyParkingRoutes);
 router.use('/society-poll', societyPollRoutes);
 router.use('/society-document', societyDocumentRoutes);
 router.use('/society-documents', societyDocumentRoutes);
+router.use('/resident-document', residentDocumentRoutes);
+router.use('/resident-documents', residentDocumentRoutes);
 router.use('/society-emergency-contact', societyEmergencyContactRoutes);
 router.use('/society-emergency-contacts', societyEmergencyContactRoutes);
 router.use('/society-worker', societyWorkerRoutes);
