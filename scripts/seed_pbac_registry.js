@@ -99,6 +99,7 @@ export const CANONICAL_PERMISSIONS = [
   { permission_code: 'business.reviews.respond', permission_name: 'Respond to Business Reviews', module: 'business', description: 'Reply to customer feedback' },
 
   // Service Providers
+  { permission_code: 'service_category.manage', permission_name: 'Manage Service Categories and Subcategories', module: 'service', description: 'Create, update, activate and manage service categories and subcategories' },
   { permission_code: 'service.create', permission_name: 'Create Service Listing', module: 'service', description: 'Create local service profile' },
   { permission_code: 'service.view', permission_name: 'View Services', module: 'service', description: 'Discover service listings' },
   { permission_code: 'service.update_own', permission_name: 'Update Own Service', module: 'service', description: 'Edit service offerings' },

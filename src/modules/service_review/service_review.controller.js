@@ -3,16 +3,19 @@ import * as serviceReviewService from './service_review.service.js';
 
 export const createReview = async (req, res, next) => {
   try {
-    const review = await serviceReviewService.createReview(req.body);
-    return successResponse(res, 201, 'Service review created successfully', review);
+    const review = await serviceReviewService.createReview(req.body, req.user);
+    return successResponse(res, 201, 'Service review submitted successfully', review);
   } catch (error) {
+    if (error.statusCode) {
+      return errorResponse(res, error.statusCode, error.message);
+    }
     next(error);
   }
 };
 
 export const getAllReviews = async (req, res, next) => {
   try {
-    const reviews = await serviceReviewService.getAllReviews();
+    const reviews = await serviceReviewService.getAllReviews(req.query);
     return successResponse(res, 200, 'Service reviews fetched successfully', reviews);
   } catch (error) {
     next(error);
@@ -31,40 +34,15 @@ export const getReviewById = async (req, res, next) => {
   }
 };
 
-export const updateReview = async (req, res, next) => {
-  try {
-    const review = await serviceReviewService.updateReview(req.params.id, req.body);
-    if (!review) {
-      return errorResponse(res, 404, 'Service review not found');
-    }
-    return successResponse(res, 200, 'Service review updated successfully', review);
-  } catch (error) {
-    next(error);
-  }
-};
-
 export const deleteReview = async (req, res, next) => {
   try {
-    const { deletedRemarks, updated_by } = req.body;
-    const review = await serviceReviewService.softDeleteReview(req.params.id, deletedRemarks, updated_by);
-    if (!review) {
-      return errorResponse(res, 404, 'Service review not found');
-    }
-    return successResponse(res, 200, 'Service review deleted successfully (soft delete)', null);
+    const { deletedRemarks } = req.body;
+    await serviceReviewService.softDeleteReview(req.params.id, deletedRemarks, req.user);
+    return successResponse(res, 200, 'Service review deleted successfully', null);
   } catch (error) {
-    next(error);
-  }
-};
-
-export const bulkDeleteReviews = async (req, res, next) => {
-  try {
-    const { ids, deletedRemarks, updated_by } = req.body;
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return errorResponse(res, 400, 'Please provide an array of ids');
+    if (error.statusCode) {
+      return errorResponse(res, error.statusCode, error.message);
     }
-    const result = await serviceReviewService.bulkSoftDeleteReviews(ids, deletedRemarks, updated_by);
-    return successResponse(res, 200, 'Service reviews deleted successfully (bulk soft delete)', result);
-  } catch (error) {
     next(error);
   }
 };

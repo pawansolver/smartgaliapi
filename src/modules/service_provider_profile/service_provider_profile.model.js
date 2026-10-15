@@ -26,6 +26,15 @@ const ServiceProviderProfile = sequelize.define('ServiceProviderProfile', {
       key: 'serviceCategoryId',
     }
   },
+  business_name: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
+  provider_type: {
+    type: DataTypes.STRING(100),
+    defaultValue: 'Independent Professional',
+    allowNull: true,
+  },
   description: {
     type: DataTypes.TEXT,
     allowNull: true,
@@ -41,6 +50,58 @@ const ServiceProviderProfile = sequelize.define('ServiceProviderProfile', {
   is_verified: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
+  },
+  verification_status: {
+    type: DataTypes.STRING(50),
+    defaultValue: 'underReview',
+  },
+  rating: {
+    type: DataTypes.DECIMAL(3, 2),
+    defaultValue: 0.00,
+  },
+  review_count: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+  },
+  completed_jobs_count: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+  },
+  is_online: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
+  service_area: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const raw = this.getDataValue('service_area');
+      if (!raw) return null;
+      try {
+        return typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } catch (_) {
+        return null;
+      }
+    },
+    set(val) {
+      this.setDataValue('service_area', val && typeof val === 'object' ? JSON.stringify(val) : val);
+    }
+  },
+  availability: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const raw = this.getDataValue('availability');
+      if (!raw) return null;
+      try {
+        return typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } catch (_) {
+        return null;
+      }
+    },
+    set(val) {
+      this.setDataValue('availability', val && typeof val === 'object' ? JSON.stringify(val) : val);
+    }
   },
   ...commonFields
 }, {

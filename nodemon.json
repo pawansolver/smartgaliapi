@@ -9,7 +9,14 @@
     "*.log",
     "test/**",
     "node_modules/**",
-    "coverage/**"
+    "coverage/**",
+    "*.pdf",
+    "*.md",
+    "scripts/**"
+  ],
+  "nodeArgs": [
+    "--max-old-space-size=4096",
+    "--max-semi-space-size=64"
   ],
   "delay": 1000
 }

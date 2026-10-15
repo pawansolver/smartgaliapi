@@ -20,7 +20,7 @@ app.set('trust proxy', env.trustProxy);
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
 })); // Security headers
-app.use(cors({
+const corsMiddleware = cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, Postman, curl) or file:// origin ('null')
     if (!origin || origin === 'null') {
@@ -64,7 +64,9 @@ app.use(cors({
     'X-Request-Id',
   ],
   credentials: true,
-})); // Enable CORS
+});
+app.use(corsMiddleware); // Enable CORS
+app.options('*', corsMiddleware); // Explicitly handle all preflight OPTIONS requests
 // Skip JSON / urlencoded parsers for multipart requests (file uploads).
 // If these parsers run on a multipart body they interfere with multer's
 // stream reader, leaving req.file undefined even when the file was sent.

@@ -78,8 +78,13 @@ export const connectDB = async () => {
     console.log('Database connected successfully.');
 
     // alter: false — new columns already added manually via ALTER TABLE scripts
-    await sequelize.sync({ alter: false });
-    console.log('Models synchronized.');
+    // logging: false prevents high-volume string allocations in V8 NewSpace during server startup
+    if (process.env.DB_SYNC !== 'false') {
+      await sequelize.sync({ alter: false, logging: false });
+      console.log('Models synchronized.');
+    } else {
+      console.log('Database sync skipped (DB_SYNC=false).');
+    }
   } catch (error) {
     console.error('Unable to connect to the database:', error);
     if (error.original?.code === 'ER_USER_LIMIT_REACHED' || error.parent?.code === 'ER_USER_LIMIT_REACHED') {
