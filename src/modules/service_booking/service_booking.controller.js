@@ -124,6 +124,16 @@ export const rejectBooking = async (req, res, next) => {
   }
 };
 
+export const rescheduleBooking = async (req, res, next) => {
+  try {
+    const updated = await serviceBookingService.transitionBooking(req.params.id, 'schedule', req.body, req.user);
+    return successResponse(res, 200, 'Booking rescheduled successfully', updated);
+  } catch (error) {
+    if (error.statusCode) return errorResponse(res, error.statusCode, error.message);
+    next(error);
+  }
+};
+
 export const scheduleBooking = async (req, res, next) => {
   try {
     const updated = await serviceBookingService.transitionBooking(req.params.id, 'schedule', req.body, req.user);

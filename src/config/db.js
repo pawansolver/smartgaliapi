@@ -31,11 +31,12 @@ const sequelize = new Sequelize(env.db.name, env.db.user, env.db.password, {
   dialectOptions: {
     dateStrings: true,
     typeCast: true,
+    connectTimeout: 60000,
   },
   pool: {
     max: process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX) : (env.isProduction ? 10 : 3),
     min: 0,
-    acquire: 30000,
+    acquire: 60000,
     idle: 10000,
     evict: 5000,
   },

@@ -1,8 +1,10 @@
 /**
- * Public Service & Provider Projections (DTO Mappers)
+ * Enterprise Service Projection & Privacy Shield
  * ─────────────────────────────────────────────────────────────────────────────
  * Protects internal models, PII, and sensitive records from leaking to
  * unauthenticated Guest or Resident discovery endpoints.
+ * Ensures provider private home coordinates and internal coverage origin
+ * coordinates are NEVER exposed publicly.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -45,6 +47,22 @@ export const toPublicServiceListing = (listing) => {
     }
   }
 
+  // Safe Coverage Areas Projection (Privacy: Do NOT leak raw GPS coordinates)
+  const publicCoverageAreas = Array.isArray(raw.coverage_areas)
+    ? raw.coverage_areas
+        .filter((a) => a.is_active !== false && !a.is_deleted)
+        .map((a) => ({
+          id: Number(a.id),
+          coverage_scope: a.coverage_scope || 'PUBLIC',
+          coverage_method: a.coverage_method || 'RADIUS',
+          city_name: a.city?.name || null,
+          locality_name: a.locality?.name || null,
+          pincode: a.pincode?.pincode || null,
+          origin_address: a.origin_address || null,
+          radius_km: a.resolved_radius_km != null ? Number(a.resolved_radius_km) : (a.radius_option?.radius_km ? Number(a.radius_option.radius_km) : null),
+        }))
+    : [];
+
   return {
     id: Number(raw.id),
     title: raw.title || 'Untitled Service',
@@ -53,6 +71,8 @@ export const toPublicServiceListing = (listing) => {
     duration: raw.duration || null,
     is_available: !!raw.is_available,
     moderation_status: raw.moderation_status || 'approved',
+    coverage_scope: raw.coverage_scope || 'PUBLIC',
+    coverage_areas: publicCoverageAreas,
     category_id: raw.category_id ? Number(raw.category_id) : (provider.service_category_id ? Number(provider.service_category_id) : null),
     category_name: category.serviceCategoryName || 'General',
     category_image: category.serviceCategoryImage || null,
@@ -61,6 +81,35 @@ export const toPublicServiceListing = (listing) => {
     highlights: Array.isArray(highlights) ? highlights : [],
     safe_terms: raw.safe_terms || null,
     images: Array.isArray(images) ? images : [],
+    pricing_model_id: raw.pricing_model_id ? Number(raw.pricing_model_id) : null,
+    pricing_model: raw.pricing_model ? { id: Number(raw.pricing_model.id), code: raw.pricing_model.code, name: raw.pricing_model.name } : null,
+    pricing_unit_id: raw.pricing_unit_id ? Number(raw.pricing_unit_id) : null,
+    pricing_unit: raw.pricing_unit ? { id: Number(raw.pricing_unit.id), code: raw.pricing_unit.code, name: raw.pricing_unit.name } : null,
+    hourly_rate: raw.hourly_rate != null ? Number(raw.hourly_rate) : null,
+    inspection_fee: raw.inspection_fee != null ? Number(raw.inspection_fee) : null,
+    duration_option: raw.duration_option ? { id: Number(raw.duration_option.id), label: raw.duration_option.label, minutes: Number(raw.duration_option.minutes) } : null,
+    buffer_option: raw.buffer_option ? { id: Number(raw.buffer_option.id), label: raw.buffer_option.label, minutes: Number(raw.buffer_option.minutes) } : null,
+    execution_method: raw.execution_method ? { id: Number(raw.execution_method.id), code: raw.execution_method.code, name: raw.execution_method.name } : null,
+    min_duration: raw.min_duration_option ? { id: Number(raw.min_duration_option.id), label: raw.min_duration_option.label, minutes: raw.min_duration_option.minutes } : null,
+    material_policy: raw.material_policy ? { id: Number(raw.material_policy.id), code: raw.material_policy.code, name: raw.material_policy.name } : null,
+    charge_type: raw.charge_type ? { id: Number(raw.charge_type.id), code: raw.charge_type.code, name: raw.charge_type.name } : null,
+    packages: Array.isArray(raw.packages) ? raw.packages.map(p => ({
+      id: Number(p.id),
+      package_level_id: p.package_level_id ? Number(p.package_level_id) : null,
+      name: p.name,
+      description: p.description,
+      price: Number(p.price),
+      duration_minutes: p.duration_minutes,
+      included_items: p.included_items || [],
+    })) : [],
+    addons: Array.isArray(raw.addons) ? raw.addons.map(a => ({
+      id: Number(a.id),
+      addon_type_id: a.addon_type_id ? Number(a.addon_type_id) : null,
+      name: a.name,
+      description: a.description,
+      price: Number(a.price),
+      is_enabled: !!a.is_enabled,
+    })) : [],
     rating: Number(raw.rating || 0.0),
     reviews_count: Number(raw.reviews_count || 0),
     bookings_count: Number(raw.bookings_count || 0),

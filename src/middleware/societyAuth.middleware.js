@@ -22,8 +22,23 @@ export const resolveSocietyId = async (req) => {
     }
   }
 
-  // If not a document route, req.params.id might be a societyId (e.g. /societies/:id)
-  if (!isDocRoute && req.params?.id) {
+  // If this is a society-service-access route (/society-service-access/:id), req.params.id is the access record ID
+  const isAccessRoute = req.baseUrl?.includes('society-service-access') || req.originalUrl?.includes('society-service-access');
+  if (isAccessRoute && req.params?.id) {
+    try {
+      const { default: SocietyServiceAccess } = await import('../modules/society_service_access/society_service_access.model.js');
+      const acc = await SocietyServiceAccess.findByPk(req.params.id);
+      if (acc && acc.society_id) {
+        req.societyAccess = acc;
+        return Number(acc.society_id);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // If not a document or access route, req.params.id might be a societyId (e.g. /societies/:id)
+  if (!isDocRoute && !isAccessRoute && req.params?.id) {
     return Number(req.params.id);
   }
 

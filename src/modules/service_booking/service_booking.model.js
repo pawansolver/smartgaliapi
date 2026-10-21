@@ -44,12 +44,28 @@ const ServiceBooking = sequelize.define('ServiceBooking', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  occupied_until: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
   time_slot: {
     type: DataTypes.STRING(100),
     allowNull: true,
   },
   service_address: {
     type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  society_id: {
+    type: DataTypes.BIGINT,
+    allowNull: true,
+  },
+  latitude: {
+    type: DataTypes.DECIMAL(10, 8),
+    allowNull: true,
+  },
+  longitude: {
+    type: DataTypes.DECIMAL(11, 8),
     allowNull: true,
   },
   notes: {
@@ -106,6 +122,22 @@ const ServiceBooking = sequelize.define('ServiceBooking', {
     },
     set(val) {
       this.setDataValue('price_snapshot', val && typeof val === 'object' ? JSON.stringify(val) : val);
+    }
+  },
+  coverage_snapshot: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const raw = this.getDataValue('coverage_snapshot');
+      if (!raw) return null;
+      try {
+        return typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } catch (_) {
+        return null;
+      }
+    },
+    set(val) {
+      this.setDataValue('coverage_snapshot', val && typeof val === 'object' ? JSON.stringify(val) : val);
     }
   },
   started_at: {

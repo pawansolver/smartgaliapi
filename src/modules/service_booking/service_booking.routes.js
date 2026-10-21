@@ -44,6 +44,7 @@ router.get('/:id/timeline', authenticate, serviceBookingController.getBookingTim
 router.post('/:id/accept', authenticate, serviceBookingController.acceptBooking);
 router.post('/:id/reject', authenticate, validateBody(rejectBookingSchema), serviceBookingController.rejectBooking);
 router.post('/:id/schedule', authenticate, validateBody(scheduleBookingSchema), serviceBookingController.scheduleBooking);
+router.post('/:id/reschedule', authenticate, validateBody(scheduleBookingSchema), serviceBookingController.rescheduleBooking);
 router.post('/:id/on-the-way', authenticate, serviceBookingController.onTheWayBooking);
 router.post('/:id/start', authenticate, validateBody(startBookingSchema), serviceBookingController.startBooking);
 router.post('/:id/complete', authenticate, serviceBookingController.completeBooking);

@@ -14,8 +14,7 @@ export const createListing = async (req, res, next) => {
 
 export const getMyListings = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?.userId;
-    const listings = await serviceListingService.getMyListings(userId);
+    const listings = await serviceListingService.getMyListings(req.user);
     return successResponse(res, 200, 'Provider listings fetched successfully', listings);
   } catch (error) {
     next(error);
@@ -148,6 +147,97 @@ export const bulkDeleteListings = async (req, res, next) => {
     }
     const result = await serviceListingService.bulkSoftDeleteListings(ids, deletedRemarks, updated_by);
     return successResponse(res, 200, 'Service listings deleted successfully', result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const calculatePrice = async (req, res, next) => {
+  try {
+    const listingId = req.params.id;
+    const { package_id, addon_ids, duration_hours, material_charge, discount_amount } = req.body;
+    const calculation = await serviceListingService.calculateAuthoritativeServicePrice({
+      listingId,
+      packageId: package_id,
+      addonIds: addon_ids,
+      durationHours: duration_hours,
+      materialCharge: material_charge,
+      discountAmount: discount_amount,
+    });
+    return successResponse(res, 200, 'Authoritative service price calculated successfully', calculation);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+// ── Step 5: Enterprise Media & KYC Controller Methods ────────────────────────
+
+export const uploadListingMedia = async (req, res, next) => {
+  try {
+    const file = req.file || (req.files?.photo?.[0]) || (req.files?.image?.[0]) || (req.files?.file?.[0]);
+    const media = await serviceListingService.uploadServiceListingMedia(req.params.id, req.user, file, req.body);
+    return successResponse(res, 201, 'Portfolio photo uploaded successfully', media);
+  } catch (error) {
+    if (error.statusCode === 403 || (error.message && error.message.startsWith('Forbidden'))) {
+      return errorResponse(res, 403, error.message);
+    }
+    next(error);
+  }
+};
+
+export const getListingMedia = async (req, res, next) => {
+  try {
+    const media = await serviceListingService.getServiceListingMedia(req.params.id, req.user);
+    return successResponse(res, 200, 'Service portfolio photos fetched successfully', media);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteListingMedia = async (req, res, next) => {
+  try {
+    const result = await serviceListingService.deleteServiceListingMedia(req.params.id, req.params.mediaId, req.user);
+    return successResponse(res, 200, result.message || 'Portfolio photo deleted successfully');
+  } catch (error) {
+    if (error.statusCode === 403 || (error.message && error.message.startsWith('Forbidden'))) {
+      return errorResponse(res, 403, error.message);
+    }
+    next(error);
+  }
+};
+
+export const getListingKycStatus = async (req, res, next) => {
+  try {
+    const kycStatus = await serviceListingService.getServiceListingKycStatus(req.params.id, req.user);
+    return successResponse(res, 200, 'Service KYC verification status retrieved successfully', kycStatus);
+  } catch (error) {
+    if (error.statusCode === 403 || (error.message && error.message.startsWith('Forbidden'))) {
+      return errorResponse(res, 403, error.message);
+    }
+    next(error);
+  }
+};
+
+export const submitListingForReview = async (req, res, next) => {
+  try {
+    const listing = await serviceListingService.submitServiceListingForReview(req.params.id, req.user);
+    return successResponse(res, 200, 'Service listing submitted for review successfully', listing);
+  } catch (error) {
+    if (error.statusCode === 403 || (error.message && error.message.startsWith('Forbidden'))) {
+      return errorResponse(res, 403, error.message);
+    }
+    next(error);
+  }
+};
+
+
+export const toggleListingStatus = async (req, res, next) => {
+  try {
+    const actorId = req.user?.id || req.user?.userId;
+    const { is_available } = req.body;
+    const listing = await serviceListingService.adminToggleListingStatus(req.params.id, is_available, actorId);
+    return successResponse(res, 200, 'Service listing status updated successfully', listing);
   } catch (error) {
     next(error);
   }

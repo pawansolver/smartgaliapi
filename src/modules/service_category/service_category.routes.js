@@ -21,11 +21,9 @@ const router = express.Router();
  * - In Production: Strictly enforced (Super Admin or service_category.manage permission required).
  */
 export const requireCategoryManagement = async (req, res, next) => {
-  // ── TEMPORARY DEV BYPASS (Requested by User for testing) ───────────────────
-  if (process.env.NODE_ENV === 'development' || !env.isProduction || process.env.BYPASS_SERVICE_AUTH === 'true') {
-    if (!req.user) {
-      req.user = { id: 391, userId: 391, userRole: 'super_admin' };
-    }
+  // ── DEV BYPASS: ONLY when completely unauthenticated (no req.user) ──────────
+  if ((process.env.NODE_ENV === 'development' || !env.isProduction || process.env.BYPASS_SERVICE_AUTH === 'true') && !req.user) {
+    req.user = { id: 391, userId: 391, userRole: 'super_admin' };
     return next();
   }
 

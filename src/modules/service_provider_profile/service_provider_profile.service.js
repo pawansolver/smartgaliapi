@@ -175,6 +175,7 @@ export const getAllProfiles = async ({ category_id, is_verified, is_online, sear
   if (category_id) where.service_category_id = category_id;
   if (is_verified !== undefined) where.is_verified = is_verified;
   if (is_online !== undefined) where.is_online = is_online;
+  if (verification_status && verification_status !== 'all') where.verification_status = verification_status;
   if (search) {
     where[Op.or] = [
       { business_name: { [Op.like]: `%${search}%` } },
@@ -187,7 +188,7 @@ export const getAllProfiles = async ({ category_id, is_verified, is_online, sear
   return await ServiceProviderProfile.findAndCountAll({
     where,
     include: [
-      { model: User, as: 'user', attributes: ['userId', 'userName'] },
+      { model: User, as: 'user', attributes: ['userId', 'userName', 'phone', 'email'] },
       { model: ServiceCategory, as: 'category' },
     ],
     order: [['rating', 'DESC'], ['created_at', 'DESC']],

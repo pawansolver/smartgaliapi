@@ -1,4 +1,7 @@
-﻿import express from 'express';
+import societyServiceAccessRoutes from '../modules/society_service_access/society_service_access.routes.js';
+import locationMasterRoutes from '../modules/location_master/location_master.routes.js';
+import serviceConfigRoutes from '../modules/service_config/service_config.routes.js';
+import express from 'express';
 import exampleRoutes from '../modules/example/example.routes.js';
 import permissionRoutes from '../modules/permission/permission.routes.js';
 import roleRoutes from '../modules/role/role.routes.js';
@@ -68,12 +71,9 @@ import complaintMasterRoutes, {
 } from '../modules/complaint_master/complaint_master.routes.js';
 import superAdminComplaintRoutes from '../modules/society_complaint/super_admin_complaint.routes.js';
 import { generalApiLimiter } from '../middleware/rateLimit.middleware.js';
-
 const router = express.Router();
-
 // Shared Redis-backed general API limiter (skips /health)
 router.use(generalApiLimiter);
-
 router.use('/example', exampleRoutes);
 router.use('/role', roleRoutes);
 router.use('/roles', roleRoutes);
@@ -93,9 +93,13 @@ router.use('/business-profile', businessProfileRoutes);
 router.use('/business-image', businessImageRoutes);
 router.use('/business-offer', businessOfferRoutes);
 router.use('/business-review', businessReviewRoutes);
+router.use('/locations', locationMasterRoutes);
+router.use('/location-master', locationMasterRoutes);
 router.use('/service-category', serviceCategoryRoutes);
+router.use('/service-config', serviceConfigRoutes);
 router.use('/service-provider-profile', serviceProviderProfileRoutes);
 router.use('/service-listing', serviceListingRoutes);
+router.use('/service-listings', serviceListingRoutes);
 router.use('/service-booking', serviceBookingRoutes);
 router.use('/service-review', serviceReviewRoutes);
 router.use('/societies', societiesRoutes);
@@ -152,22 +156,20 @@ router.use('/ad-banner', adBannerRoutes);
 router.use('/ad-campaign', adCampaignRoutes);
 router.use('/ad-sponsored', adSponsoredRoutes);
 router.use('/analytics', analyticsRoutes);
-
 // Complaint Masters (Resident queries & Super Admin management)
 router.use('/complaint-masters', complaintMasterRoutes);
 router.use('/complaint-categories', categoryRouter);
 router.use('/complaint-sub-categories', subCategoryRouter);
 router.use('/complaint-location-types', locationTypeRouter);
-
 // Super Admin Platform Oversight Routes
 router.use('/super-admin/complaints', superAdminComplaintRoutes);
 router.use('/admin/complaints', superAdminComplaintRoutes);
 router.use('/admin/complaint-masters', complaintMasterRoutes);
+// Society Service Access & Provider Approval
+router.use('/society-service-access', societyServiceAccessRoutes);
 
 // Health check route
 router.get('/health', (req, res) => {
-  res.status(200).json({ success: true, message: 'Server is healthy' });
+res.status(200).json({ success: true, message: 'Server is healthy' });
 });
-
 export default router;
-

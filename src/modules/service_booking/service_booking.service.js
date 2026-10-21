@@ -1,3 +1,8 @@
+import SocietyMember from '../society_member/society_member.model.js';
+import SocietyProfile from '../society_profile/society_profile.model.js';
+import { calculateAuthoritativeServicePrice } from '../service_listing/service_pricing.service.js';
+import { resolveServiceDurationConfig, parseTimeSlotInterval } from './service_duration.service.js';
+import { validateCustomerCoverageEligibility } from './service_coverage.service.js';
 import { Op } from 'sequelize';
 import sequelize from '../../config/db.js';
 import ServiceBooking from './service_booking.model.js';
@@ -52,22 +57,133 @@ export const createBooking = async (bookingData, actorUser) => {
       throw err;
     }
 
-    // Check concurrency: Ensure no overlapping active booking for the exact date & time slot
-    const activeBookingCount = await ServiceBooking.count({
+    // ──────────────────────────────────────────────────────────────────────────
+    // AUTHORITATIVE COVERAGE ENGINE (Step 4 & Flow Enforcement)
+    // Provider -> Service -> Coverage -> Society / Public -> Customer Location -> Coverage Engine
+    // Decision: YES -> Allow Booking | NO -> Block (HTTP 409 Conflict)
+    // ──────────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
+    // AUTHORITATIVE RESIDENT SOCIETY RESOLUTION (Phases 8 & 19)
+    // Prevent resident from spoofing an arbitrary society_id
+    // ──────────────────────────────────────────────────────────────────────────
+    let authoritativeSocietyId = null;
+    if (bookingData.society_id) {
+      const targetSocId = Number(bookingData.society_id);
+      const membership = await SocietyMember.findOne({
+        where: {
+          user_id: actorId,
+          society_id: targetSocId,
+          status: 'active',
+          is_deleted: false,
+        },
+        transaction: t,
+      });
+
+      if (!membership) {
+        // Also check if caller is society creator/owner
+        const society = await SocietyProfile.findOne({
+          where: { id: targetSocId, is_deleted: false, is_active: true },
+          transaction: t,
+        });
+        const isOwner = society && (Number(society.user_id) === Number(actorId) || Number(society.created_by) === Number(actorId));
+        if (!isOwner) {
+          const err = new Error('Security Violation: You do not have an active membership in the specified residential society.');
+          err.statusCode = 403;
+          err.code = 'INVALID_SOCIETY_MEMBERSHIP';
+          throw err;
+        }
+      }
+      authoritativeSocietyId = targetSocId;
+    } else if (listing.coverage_scope === 'SOCIETY') {
+      const activeMember = await SocietyMember.findOne({
+        where: {
+          user_id: actorId,
+          status: 'active',
+          is_deleted: false,
+        },
+        order: [['id', 'DESC']],
+        transaction: t,
+      });
+      if (activeMember) {
+        authoritativeSocietyId = Number(activeMember.society_id);
+      }
+    }
+
+    if (!listing.provider?.is_active) {
+      const err = new Error('The designated service provider is currently inactive.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const coverageResult = await validateCustomerCoverageEligibility({
+      listing,
+      providerProfile: listing.provider,
+      customerLocation: {
+        latitude: bookingData.latitude,
+        longitude: bookingData.longitude,
+        society_id: authoritativeSocietyId,
+        service_address: bookingData.service_address,
+        locality: bookingData.locality,
+        pincode: bookingData.pincode,
+        city: bookingData.city,
+        locality_id: bookingData.locality_id,
+        pincode_id: bookingData.pincode_id,
+        city_id: bookingData.city_id,
+      },
+      userRole: actorUser?.userRole || actorUser?.role || 'resident',
+    });
+
+    if (!coverageResult.isEligible) {
+      const err = new Error(coverageResult.reason || 'This service is not available in your area.');
+      err.statusCode = 409;
+      err.code = coverageResult.reasonCode || 'OUT_OF_SERVICE_AREA';
+      throw err;
+    }
+
+    // Resolve authoritative Step 3 Duration, Buffer, Execution & Capacity configuration
+    const durationConfig = await resolveServiceDurationConfig(listing);
+    const bookingInterval = parseTimeSlotInterval(
+      bookingData.scheduled_at,
+      bookingData.time_slot,
+      durationConfig.totalOccupancyMinutes
+    );
+
+    const scheduledDateStart = new Date(bookingInterval.start || bookingData.scheduled_at);
+    const occupiedUntilDate = new Date(bookingInterval.occupiedUntil || (scheduledDateStart.getTime() + durationConfig.totalOccupancyMinutes * 60000));
+
+    // Determine effective booking capacity: service listing configuration takes priority, then provider profile fallback
+    const effectiveCapacity = durationConfig.capacity || listing.provider?.availability?.maxConcurrentBookings || 1;
+
+    // Check concurrency & interval overlap:
+    // Existing active bookings overlap with new interval if:
+    // (existing.scheduled_at < new.occupied_until) AND (existing.occupied_until > new.scheduled_at)
+    // Or if exact same time_slot string on same scheduled_at date
+    const existingActiveBookings = await ServiceBooking.findAll({
       where: {
         provider_id: providerId,
-        scheduled_at: bookingData.scheduled_at,
-        time_slot: bookingData.time_slot,
         status: { [Op.in]: ['requested', 'pending', 'accepted', 'confirmed', 'scheduled', 'on_the_way', 'started', 'in_progress'] },
         is_deleted: false,
+        [Op.or]: [
+          {
+            // Exact same date & time slot
+            scheduled_at: bookingData.scheduled_at,
+            time_slot: bookingData.time_slot,
+          },
+          {
+            // Interval overlap check where occupied_until exists
+            [Op.and]: [
+              { scheduled_at: { [Op.lt]: occupiedUntilDate } },
+              { occupied_until: { [Op.gt]: scheduledDateStart } },
+            ],
+          },
+        ],
       },
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
 
-    const maxAllowed = listing.provider?.availability?.maxConcurrentBookings || 1;
-    if (activeBookingCount >= maxAllowed) {
-      const err = new Error('This time slot is no longer available. Please choose another time slot.');
+    if (existingActiveBookings.length >= effectiveCapacity) {
+      const err = new Error('This time slot is no longer available due to existing booking occupancy. Please choose another time slot.');
       err.statusCode = 409;
       throw err;
     }
@@ -77,28 +193,72 @@ export const createBooking = async (bookingData, actorUser) => {
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const bookingReference = `SG-SRV-${randomSuffix}`;
 
-    // Snapshot price and service details to ensure historical immutability
+    // Authoritative Price Calculation for Booking
+    const priceCalculation = await calculateAuthoritativeServicePrice({
+      listingId: listing.id,
+      packageId: bookingData.package_id || null,
+      addonIds: bookingData.addon_ids || [],
+      durationHours: bookingData.duration_hours || 1,
+      materialCharge: bookingData.material_charge || 0.00,
+      discountAmount: bookingData.discount_amount || 0.00,
+    });
+
+    const coverageSnapshot = {
+      society_id: authoritativeSocietyId || null,
+      provider_id: providerId,
+      service_listing_id: listing.id,
+      society_access_id: coverageResult.societyAccessId || null,
+      access_status_at_booking: coverageResult.societyAccessStatus || (authoritativeSocietyId ? 'APPROVED' : null),
+      coverage_area_id: coverageResult.matchedCoverageAreaId || null,
+      coverage_method: coverageResult.coverageMethod || 'RADIUS',
+      coverage_scope: coverageResult.coverageScope || listing.coverage_scope || 'PUBLIC',
+      distance_km: coverageResult.distanceKm != null ? coverageResult.distanceKm : null,
+      allowed_radius_km: coverageResult.allowedRadiusKm != null ? coverageResult.allowedRadiusKm : null,
+      city_id: bookingData.city_id || null,
+      locality_id: bookingData.locality_id || null,
+      pincode_id: bookingData.pincode_id || null,
+      evaluated_at: new Date().toISOString(),
+    };
+
     const priceSnapshot = {
-      listing_id: listing.id,
-      title: listing.title,
-      price: listing.price != null ? Number(listing.price) : 0,
-      duration: listing.duration || null,
+      selected_package_name: bookingData.package_name || null,
+      selected_package_price: bookingData.package_price || null,
+      selected_addon_names: bookingData.selected_addon_names || [],
+      platform_fee: bookingData.platform_fee || 29.00,
+      gst_amount: bookingData.gst_amount || 0.00,
+      material_charge: bookingData.material_charge || 50.00,
+      final_amount_charged: (bookingData.amount != null && Number(bookingData.amount) > 0) ? Number(bookingData.amount) : priceCalculation.customer_payable,
+      ...priceCalculation,
       category_id: listing.category_id,
       provider_id: providerId,
       provider_name: listing.provider?.user?.userName || listing.provider?.business_name || 'Service Professional',
+      duration_minutes: durationConfig.durationMinutes,
+      duration_label: durationConfig.durationLabel,
+      buffer_minutes: durationConfig.bufferMinutes,
+      buffer_label: durationConfig.bufferLabel,
+      execution_method: durationConfig.executionMethodCode,
+      total_occupancy_minutes: durationConfig.totalOccupancyMinutes,
+      distance_km: coverageResult.distanceKm != null ? coverageResult.distanceKm : null,
+      coverage_area_type: coverageResult.coverageMethod || coverageResult.coverage?.areaTypeCode || 'RADIUS',
+      coverage_snapshot: coverageSnapshot,
     };
 
     const booking = await ServiceBooking.create({
+      coverage_snapshot: coverageSnapshot,
       listing_id: listing.id,
       provider_id: providerId,
       user_id: actorId,
       booking_reference: bookingReference,
-      scheduled_at: bookingData.scheduled_at,
+      scheduled_at: scheduledDateStart,
+      occupied_until: occupiedUntilDate,
       time_slot: bookingData.time_slot,
       service_address: bookingData.service_address,
+      society_id: authoritativeSocietyId || null,
+      latitude: bookingData.latitude || null,
+      longitude: bookingData.longitude || null,
       notes: bookingData.notes || null,
       status: 'requested',
-      amount: listing.price,
+      amount: (bookingData.amount != null && Number(bookingData.amount) > 0) ? Number(bookingData.amount) : priceCalculation.customer_payable,
       doorstep_pin: doorstepPin,
       doorstep_pin_verified: false,
       price_snapshot: priceSnapshot,
@@ -331,8 +491,48 @@ export const transitionBooking = async (id, action, params = {}, actorUser) => {
         err.statusCode = 403;
         throw err;
       }
+
+      // Revalidate Duration & Buffer Occupancy for Rescheduling / Scheduling
+      const newScheduledAt = params.scheduled_at || booking.scheduled_at;
+      const newTimeSlot = params.time_slot || booking.time_slot;
+      const durationConfig = await resolveServiceDurationConfig(booking.listing || booking.listing_id);
+      const bookingInterval = parseTimeSlotInterval(newScheduledAt, newTimeSlot, durationConfig.totalOccupancyMinutes);
+      const scheduledDateStart = new Date(bookingInterval.start || newScheduledAt);
+      const occupiedUntilDate = new Date(bookingInterval.occupiedUntil || (scheduledDateStart.getTime() + durationConfig.totalOccupancyMinutes * 60000));
+      const effectiveCapacity = durationConfig.capacity || booking.provider?.availability?.maxConcurrentBookings || 1;
+
+      // Check for overlapping bookings (excluding current booking)
+      const conflictingBookings = await ServiceBooking.findAll({
+        where: {
+          id: { [Op.ne]: booking.id },
+          provider_id: booking.provider_id,
+          status: { [Op.in]: ['requested', 'pending', 'accepted', 'confirmed', 'scheduled', 'on_the_way', 'started', 'in_progress'] },
+          is_deleted: false,
+          [Op.or]: [
+            {
+              scheduled_at: newScheduledAt,
+              time_slot: newTimeSlot,
+            },
+            {
+              [Op.and]: [
+                { scheduled_at: { [Op.lt]: occupiedUntilDate } },
+                { occupied_until: { [Op.gt]: scheduledDateStart } },
+              ],
+            },
+          ],
+        },
+      });
+
+      if (conflictingBookings.length >= effectiveCapacity) {
+        const err = new Error('The requested reschedule time slot is no longer available due to existing booking occupancy.');
+        err.statusCode = 409;
+        throw err;
+      }
+
+      params._computed_scheduled_start = scheduledDateStart;
+      params._computed_occupied_until = occupiedUntilDate;
       nextStatus = 'scheduled';
-      timelineNote = `Service scheduled for ${params.scheduled_at || booking.scheduled_at} (${params.time_slot || booking.time_slot}).`;
+      timelineNote = `Service scheduled for ${newScheduledAt} (${newTimeSlot}). Total occupancy: ${durationConfig.totalOccupancyMinutes} mins.`;
       break;
     }
 
@@ -439,8 +639,9 @@ export const transitionBooking = async (id, action, params = {}, actorUser) => {
     updateFields.cancellation_reason = params.reason || params.cancellation_reason;
   }
   if (action === 'schedule') {
-    if (params.scheduled_at) updateFields.scheduled_at = params.scheduled_at;
+    if (params.scheduled_at) updateFields.scheduled_at = params._computed_scheduled_start || params.scheduled_at;
     if (params.time_slot) updateFields.time_slot = params.time_slot;
+    if (params._computed_occupied_until) updateFields.occupied_until = params._computed_occupied_until;
   }
 
   await booking.update(updateFields);
