@@ -1,15 +1,19 @@
-import express from 'express';
+﻿import express from 'express';
 import * as serviceProviderProfileController from './service_provider_profile.controller.js';
 import { authenticate, optionalAuthenticate, requireGlobalAdmin } from '../../middleware/auth.middleware.js';
 import { validateBody } from '../../middleware/validation.middleware.js';
+import { uploadProviderDocument } from '../../utils/fileUpload.js';
 import {
   updateProviderProfileSchema,
   updateServiceAreaSchema,
   updateAvailabilitySchema,
   verifyProviderSchema,
+  uploadProviderDocumentSchema,
+  verifyProviderDocumentSchema,
 } from './service_provider_profile.validation.js';
 
 const router = express.Router();
+
 // Dev mode helper: fallback admin for local testing
 const devAdminCheck = (req, res, next) => {
   if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
@@ -21,6 +25,21 @@ const devAdminCheck = (req, res, next) => {
   return requireGlobalAdmin(req, res, next);
 };
 
+// Document upload middleware helper supporting both 'file' and 'document' multipart keys
+const providerDocUpload = uploadProviderDocument('provider-documents').fields([
+  { name: 'file', maxCount: 1 },
+  { name: 'document', maxCount: 1 },
+]);
+
+const extractUploadedDoc = (req, res, next) => {
+  providerDocUpload(req, res, (err) => {
+    if (err) return next(err);
+    if (req.files) {
+      req.file = req.files['file']?.[0] || req.files['document']?.[0] || null;
+    }
+    next();
+  });
+};
 
 /**
  * @swagger
@@ -29,7 +48,7 @@ const devAdminCheck = (req, res, next) => {
  *   description: Enterprise Service Provider Profile and Availability APIs
  */
 
-// ── Provider Own Workspace Routes ─────────────────────────────────────────────
+// â”€â”€ Provider Own Workspace Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 router.get('/me', authenticate, serviceProviderProfileController.getMyProfile);
 router.put('/me', authenticate, validateBody(updateProviderProfileSchema), serviceProviderProfileController.updateMyProfile);
@@ -43,13 +62,22 @@ router.put('/me/availability', authenticate, validateBody(updateAvailabilitySche
 router.get('/me/overview-stats', authenticate, serviceProviderProfileController.getMyOverviewStats);
 router.get('/me/earnings', authenticate, serviceProviderProfileController.getMyEarnings);
 
-// ── Admin Moderation & Verification ──────────────────────────────────────────
+// â”€â”€ Provider Own Documents (KYC) Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+router.get('/me/required-documents', authenticate, serviceProviderProfileController.getMyRequiredDocuments);
+router.get('/me/documents', authenticate, serviceProviderProfileController.getMyDocuments);
+router.post('/me/documents', authenticate, extractUploadedDoc, validateBody(uploadProviderDocumentSchema), serviceProviderProfileController.uploadMyDocument);
+router.delete('/me/documents/:documentId', authenticate, serviceProviderProfileController.deleteMyDocument);
+
+// â”€â”€ Admin Moderation & Verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 router.get('/status/pending-verification', authenticate, requireGlobalAdmin, serviceProviderProfileController.getPendingVerifications);
+router.get('/:id/documents', authenticate, devAdminCheck, serviceProviderProfileController.getProviderDocumentsForAdmin);
 router.put('/:id/verify', optionalAuthenticate, devAdminCheck, validateBody(verifyProviderSchema), serviceProviderProfileController.verifyProfile);
+router.put('/documents/:documentId/verify', authenticate, requireGlobalAdmin, validateBody(verifyProviderDocumentSchema), serviceProviderProfileController.verifyProviderDocument);
 router.post('/bulk-delete', authenticate, requireGlobalAdmin, serviceProviderProfileController.bulkDeleteProfiles);
 
-// ── Public / Shared Provider Profile Routes ──────────────────────────────────
+// â”€â”€ Public / Shared Provider Profile Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 router.get('/', optionalAuthenticate, serviceProviderProfileController.getAllProfiles);
 router.get('/:id', optionalAuthenticate, serviceProviderProfileController.getProfileById);

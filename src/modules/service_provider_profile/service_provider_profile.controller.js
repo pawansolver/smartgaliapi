@@ -1,4 +1,4 @@
-import { successResponse, errorResponse } from '../../utils/response.js';
+﻿import { successResponse, errorResponse } from '../../utils/response.js';
 import * as serviceProviderProfileService from './service_provider_profile.service.js';
 import { toPublicProviderProfile } from '../service_listing/service_listing.projection.js';
 import { isGlobalAdminUser } from '../../middleware/auth.middleware.js';
@@ -7,7 +7,8 @@ export const getMyProfile = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.user?.userId;
     const profile = await serviceProviderProfileService.getOrCreateProviderProfile(userId);
-    return successResponse(res, 200, 'Provider profile fetched successfully', profile);
+    const formatted = await serviceProviderProfileService.formatProviderProfileResponse(profile);
+    return successResponse(res, 200, 'Provider profile fetched successfully', formatted);
   } catch (error) {
     next(error);
   }
@@ -17,7 +18,8 @@ export const updateMyProfile = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.user?.userId;
     const profile = await serviceProviderProfileService.updateMyProfile(userId, req.body);
-    return successResponse(res, 200, 'Provider profile updated successfully', profile);
+    const formatted = await serviceProviderProfileService.formatProviderProfileResponse(profile);
+    return successResponse(res, 200, 'Provider profile updated successfully', formatted);
   } catch (error) {
     next(error);
   }
@@ -82,6 +84,59 @@ export const getMyEarnings = async (req, res, next) => {
     next(error);
   }
 };
+
+// â”€â”€ Provider Documents (KYC) Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export const getMyDocuments = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const docs = await serviceProviderProfileService.getMyDocuments(userId);
+    return successResponse(res, 200, 'Provider documents fetched successfully', docs);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadMyDocument = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    if (!req.file) {
+      return errorResponse(res, 400, "No file provided. Send multipart/form-data with field name 'file' or 'document'.");
+    }
+    const doc = await serviceProviderProfileService.uploadMyDocument(userId, req.file, req.body);
+    return successResponse(res, 201, 'Provider document uploaded successfully', doc);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteMyDocument = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const success = await serviceProviderProfileService.deleteMyDocument(userId, req.params.documentId);
+    if (!success) {
+      return errorResponse(res, 404, 'Provider document not found');
+    }
+    return successResponse(res, 200, 'Provider document deleted successfully', null);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const verifyProviderDocument = async (req, res, next) => {
+  try {
+    const adminUserId = req.user?.id || req.user?.userId;
+    const doc = await serviceProviderProfileService.verifyProviderDocument(req.params.documentId, req.body, adminUserId);
+    if (!doc) {
+      return errorResponse(res, 404, 'Provider document not found');
+    }
+    return successResponse(res, 200, 'Provider document verified successfully', doc);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// â”€â”€ Public / Shared / Admin Profile Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const getAllProfiles = async (req, res, next) => {
   try {
@@ -180,6 +235,33 @@ export const verifyProfile = async (req, res, next) => {
       return errorResponse(res, 404, 'Service provider profile not found');
     }
     return successResponse(res, 200, 'Service provider profile verified successfully', profile);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const getMyRequiredDocuments = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const result = await serviceProviderProfileService.getRequiredDocuments(userId);
+    return successResponse(res, 200, 'Provider required documents checklist fetched successfully', result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProviderDocumentsForAdmin = async (req, res, next) => {
+  try {
+    const providerId = parseInt(req.params.id, 10);
+    if (!providerId || isNaN(providerId)) {
+      return errorResponse(res, 400, 'Invalid provider ID');
+    }
+    const result = await serviceProviderProfileService.getProviderDocumentsForAdmin(providerId);
+    if (!result) {
+      return errorResponse(res, 404, 'Service provider profile not found');
+    }
+    return successResponse(res, 200, 'Provider documents dossier fetched successfully', result);
   } catch (error) {
     next(error);
   }

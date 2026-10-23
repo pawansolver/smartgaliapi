@@ -130,6 +130,9 @@ export const ANNOUNCEMENT_ATTACHMENT_EXTENSIONS = Object.freeze({
 export const uploadAnnouncementAttachmentFile = (folderName = 'announcements') =>
   uploadTypedFile(folderName, ANNOUNCEMENT_ATTACHMENT_EXTENSIONS, 25 * 1024 * 1024);
 
+export const uploadProviderDocument = (folderName = 'provider-documents') =>
+  uploadTypedFile(folderName, ANNOUNCEMENT_ATTACHMENT_EXTENSIONS, 10 * 1024 * 1024);
+
 export const uploadSocietyDocument = (folderName = 'society') =>
   uploadTypedFile(folderName, COMMUNITY_DOCUMENT_EXTENSIONS, 25 * 1024 * 1024);
 

@@ -22,6 +22,7 @@ const router = express.Router();
 
 // ── Resident Endpoints ────────────────────────────────────────────────────────
 
+router.get('/available-slots/:listingId', serviceBookingController.getAvailableSlotsForListing);
 router.post('/', authenticate, validateBody(createBookingSchema), serviceBookingController.createBooking);
 router.get('/my', authenticate, serviceBookingController.getMyResidentBookings);
 

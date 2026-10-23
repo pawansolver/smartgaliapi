@@ -1,4 +1,4 @@
-import { DataTypes } from 'sequelize';
+﻿import { DataTypes } from 'sequelize';
 import sequelize from '../../config/db.js';
 
 const ServiceBookingTimeline = sequelize.define('ServiceBookingTimeline', {
@@ -27,17 +27,23 @@ const ServiceBookingTimeline = sequelize.define('ServiceBookingTimeline', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  // Explicit column mappings required when timestamps: false but columns exist
   created_at: {
     type: DataTypes.DATE,
+    field: 'created_at',
     defaultValue: DataTypes.NOW,
+    allowNull: true,
   },
   updated_at: {
     type: DataTypes.DATE,
+    field: 'updated_at',
     defaultValue: DataTypes.NOW,
+    allowNull: true,
   },
 }, {
   timestamps: false,
   tableName: 'service_booking_timelines',
+  underscored: true,
 });
 
 export default ServiceBookingTimeline;

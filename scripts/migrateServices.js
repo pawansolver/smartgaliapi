@@ -1,12 +1,16 @@
-import { DataTypes } from 'sequelize';
+﻿import { DataTypes } from 'sequelize';
 import sequelize from '../src/config/db.js';
 import * as servicesHardening from './migrations/017-enterprise-services-hardening.js';
 import * as subcategoriesAndKycLock from './migrations/018-service-subcategories-and-kyc-trade-lock.js';
+import * as providerProfileLanguagesAndDocs from './migrations/019-provider-profile-languages-and-documents.js';
+import * as dynamicKycAndServiceRequests from './migrations/020-dynamic-kyc-requirements-and-service-requests.js';
 
 const MIGRATIONS_TABLE = 'schema_migrations';
 const migrations = [
   { ...servicesHardening, version: '017-enterprise-services-hardening' },
   { ...subcategoriesAndKycLock, version: '018-service-subcategories-and-kyc-trade-lock' },
+  { ...providerProfileLanguagesAndDocs, version: '019-provider-profile-languages-and-documents' },
+  { ...dynamicKycAndServiceRequests, version: '020-dynamic-kyc-requirements-and-service-requests' },
 ];
 
 const run = async () => {

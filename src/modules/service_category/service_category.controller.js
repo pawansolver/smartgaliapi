@@ -137,3 +137,164 @@ export const bulkDeleteCategories = async (req, res, next) => {
     next(error);
   }
 };
+
+
+import * as kycReqService from './kyc_requirement.service.js';
+
+// ── KYC Document Types Master ───────────────────────────────────────────────
+
+export const listDocumentTypes = async (req, res, next) => {
+  try {
+    const includeInactive = req.query.include_inactive === 'true' || req.query.all === 'true';
+    const types = await kycReqService.listDocumentTypes({ includeInactive });
+    return successResponse(res, 200, 'KYC document types fetched successfully', types);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createDocumentType = async (req, res, next) => {
+  try {
+    const adminUserId = req.user?.id || req.user?.userId;
+    const docType = await kycReqService.createDocumentType(req.body, adminUserId);
+    return successResponse(res, 201, 'KYC document type created successfully', docType);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateDocumentType = async (req, res, next) => {
+  try {
+    const adminUserId = req.user?.id || req.user?.userId;
+    const docType = await kycReqService.updateDocumentType(req.params.id, req.body, adminUserId);
+    return successResponse(res, 200, 'KYC document type updated successfully', docType);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteDocumentType = async (req, res, next) => {
+  try {
+    const adminUserId = req.user?.id || req.user?.userId;
+    const result = await kycReqService.deleteDocumentType(req.params.id, adminUserId);
+    return successResponse(res, 200, result.message, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── Category Document Requirements ──────────────────────────────────────────
+
+export const getCategoryRequirements = async (req, res, next) => {
+  try {
+    const categoryId = parseInt(req.params.categoryId, 10);
+    if (!categoryId || isNaN(categoryId)) {
+      return errorResponse(res, 400, 'Invalid category ID');
+    }
+    const includeInactive = req.query.include_inactive === 'true' || req.query.all === 'true';
+    const result = await kycReqService.getCategoryRequirements(categoryId, { includeInactive });
+    return successResponse(res, 200, 'Category document requirements fetched successfully', result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addCategoryRequirement = async (req, res, next) => {
+  try {
+    const adminUserId = req.user?.id || req.user?.userId;
+    const categoryId = parseInt(req.params.categoryId, 10);
+    if (!categoryId || isNaN(categoryId)) {
+      return errorResponse(res, 400, 'Invalid category ID');
+    }
+    const requirement = await kycReqService.addCategoryRequirement(categoryId, req.body, adminUserId);
+    return successResponse(res, 201, 'Category document requirement added successfully', requirement);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateCategoryRequirement = async (req, res, next) => {
+  try {
+    const adminUserId = req.user?.id || req.user?.userId;
+    const requirementId = parseInt(req.params.requirementId, 10);
+    if (!requirementId || isNaN(requirementId)) {
+      return errorResponse(res, 400, 'Invalid requirement ID');
+    }
+    const requirement = await kycReqService.updateCategoryRequirement(requirementId, req.body, adminUserId);
+    return successResponse(res, 200, 'Category document requirement updated successfully', requirement);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteCategoryRequirement = async (req, res, next) => {
+  try {
+    const adminUserId = req.user?.id || req.user?.userId;
+    const requirementId = parseInt(req.params.requirementId, 10);
+    if (!requirementId || isNaN(requirementId)) {
+      return errorResponse(res, 400, 'Invalid requirement ID');
+    }
+    await kycReqService.deleteCategoryRequirement(requirementId, adminUserId);
+    return successResponse(res, 200, 'Category document requirement deleted successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const setCategoryKycConfigured = async (req, res, next) => {
+  try {
+    const adminUserId = req.user?.id || req.user?.userId;
+    const categoryId = parseInt(req.params.categoryId, 10);
+    if (!categoryId || isNaN(categoryId)) {
+      return errorResponse(res, 400, 'Invalid category ID');
+    }
+    const isConfigured = req.body.kyc_configured !== undefined ? Boolean(req.body.kyc_configured) : true;
+    const category = await kycReqService.setCategoryKycConfigured(categoryId, isConfigured, adminUserId);
+    return successResponse(res, 200, 'Category KYC configured status updated successfully', category);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── Subcategory Requests Workflow ───────────────────────────────────────────
+
+export const requestSubcategory = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    if (!userId) {
+      return errorResponse(res, 401, 'Authentication required');
+    }
+    const request = await kycReqService.requestSubcategory(userId, req.body);
+    return successResponse(res, 201, 'Subcategory request submitted successfully for admin review', request);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listSubcategoryRequests = async (req, res, next) => {
+  try {
+    const options = {
+      status: req.query.status,
+      categoryId: req.query.category_id ? parseInt(req.query.category_id, 10) : undefined,
+      providerId: req.query.provider_id ? parseInt(req.query.provider_id, 10) : undefined,
+    };
+    const requests = await kycReqService.listSubcategoryRequests(options);
+    return successResponse(res, 200, 'Subcategory requests fetched successfully', requests);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reviewSubcategoryRequest = async (req, res, next) => {
+  try {
+    const adminUserId = req.user?.id || req.user?.userId;
+    const requestId = parseInt(req.params.id, 10);
+    if (!requestId || isNaN(requestId)) {
+      return errorResponse(res, 400, 'Invalid request ID');
+    }
+    const result = await kycReqService.reviewSubcategoryRequest(requestId, req.body, adminUserId);
+    return successResponse(res, 200, 'Subcategory request reviewed successfully', result);
+  } catch (error) {
+    next(error);
+  }
+};

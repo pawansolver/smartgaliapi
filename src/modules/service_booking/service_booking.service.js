@@ -758,3 +758,9 @@ export const softDeleteBooking = async (id, deletedRemarks, updated_by) => {
   if (!booking) return null;
   return await booking.update({ is_deleted: true, deletedRemarks, updated_by, updatedAt: new Date() });
 };
+
+
+export const getAvailableSlots = async (listingId, targetDate) => {
+  const { getAvailableSlotsForDate } = await import('./service_duration.service.js');
+  return await getAvailableSlotsForDate(listingId, targetDate);
+};

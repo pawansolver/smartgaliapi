@@ -48,6 +48,24 @@ export const requireCategoryManagement = async (req, res, next) => {
 // ── Public / Provider Read APIs ─────────────────────────────────────────────
 router.get('/', optionalAuthenticate, serviceCategoryController.getAllCategories);
 router.get('/:categoryId/subcategories', optionalAuthenticate, serviceCategoryController.getSubcategoriesByCategory);
+// ── KYC Document Types Master APIs ──────────────────────────────────────────
+router.get('/kyc-document-types', optionalAuthenticate, serviceCategoryController.listDocumentTypes);
+router.post('/kyc-document-types', authenticate, requireCategoryManagement, serviceCategoryController.createDocumentType);
+router.put('/kyc-document-types/:id', authenticate, requireCategoryManagement, serviceCategoryController.updateDocumentType);
+router.delete('/kyc-document-types/:id', authenticate, requireCategoryManagement, serviceCategoryController.deleteDocumentType);
+
+// ── Subcategory Requests APIs ───────────────────────────────────────────────
+router.post('/request-subcategory', authenticate, serviceCategoryController.requestSubcategory);
+router.get('/subcategory-requests/all', authenticate, requireCategoryManagement, serviceCategoryController.listSubcategoryRequests);
+router.put('/subcategory-requests/:id/review', authenticate, requireCategoryManagement, serviceCategoryController.reviewSubcategoryRequest);
+
+// ── Category KYC Requirements APIs ──────────────────────────────────────────
+router.get('/:categoryId/kyc-requirements', optionalAuthenticate, serviceCategoryController.getCategoryRequirements);
+router.post('/:categoryId/kyc-requirements', authenticate, requireCategoryManagement, serviceCategoryController.addCategoryRequirement);
+router.put('/:categoryId/kyc-requirements/:requirementId', authenticate, requireCategoryManagement, serviceCategoryController.updateCategoryRequirement);
+router.delete('/:categoryId/kyc-requirements/:requirementId', authenticate, requireCategoryManagement, serviceCategoryController.deleteCategoryRequirement);
+router.patch('/:categoryId/kyc-requirements/status', authenticate, requireCategoryManagement, serviceCategoryController.setCategoryKycConfigured);
+
 router.get('/:id', optionalAuthenticate, serviceCategoryController.getCategoryById);
 
 // ── Admin Subcategory Management APIs ───────────────────────────────────────
@@ -114,5 +132,8 @@ router.delete(
   requireCategoryManagement,
   serviceCategoryController.deleteCategory
 );
+
+
+
 
 export default router;

@@ -16,6 +16,11 @@ const ServiceCategory = sequelize.define('ServiceCategory', {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  kyc_configured: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
   ...commonFields
 }, {
   timestamps: false,

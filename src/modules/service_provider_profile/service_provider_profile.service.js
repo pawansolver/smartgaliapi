@@ -1,20 +1,42 @@
-import { Op } from 'sequelize';
+﻿import { Op } from 'sequelize';
 import ServiceProviderProfile from './service_provider_profile.model.js';
+import ProviderDocument from './provider_document.model.js';
 import User from '../user/user.model.js';
+import UserProfile from '../userProfile/userProfile.model.js';
 import ServiceCategory from '../service_category/service_category.model.js';
+import KycDocumentType from '../service_category/kyc_document_type.model.js';
+import CategoryDocumentRequirement from '../service_category/category_document_requirement.model.js';
 import ServiceListing from '../service_listing/service_listing.model.js';
 import ServiceBooking from '../service_booking/service_booking.model.js';
 import { emitNotification } from '../notification/notification.service.js';
 import { audit } from '../audit_log/audit_log.service.js';
+import { getImageUrl } from '../../utils/fileUpload.js';
 import { logger } from '../../utils/logger.js';
+
+export const providerDefaultInclude = [
+  {
+    model: User,
+    as: 'user',
+    attributes: ['userId', 'userName', 'email', 'phone', 'user_role', 'status'],
+    include: [
+      {
+        model: UserProfile,
+        as: 'profile',
+        attributes: ['userProfileId', 'fullName', 'avatarUrl', 'bio', 'locationName'],
+      },
+    ],
+  },
+  {
+    model: ServiceCategory,
+    as: 'category',
+    attributes: ['serviceCategoryId', 'serviceCategoryName', 'serviceCategoryImage'],
+  },
+];
 
 export const getOrCreateProviderProfile = async (userId) => {
   let profile = await ServiceProviderProfile.findOne({
     where: { user_id: userId, is_deleted: false },
-    include: [
-      { model: User, as: 'user', attributes: ['userId', 'userName', 'email', 'phone'] },
-      { model: ServiceCategory, as: 'category' },
-    ],
+    include: providerDefaultInclude,
   });
 
   if (!profile) {
@@ -29,6 +51,7 @@ export const getOrCreateProviderProfile = async (userId) => {
       is_online: true,
       is_verified: false,
       verification_status: 'underReview',
+      languages: [],
       service_area: {
         city: 'Patna',
         localities: ['Kankarbagh', 'Boring Road', 'Bailey Road'],
@@ -56,19 +79,88 @@ export const getOrCreateProviderProfile = async (userId) => {
 
     profile = await ServiceProviderProfile.findOne({
       where: { id: profile.id },
-      include: [
-        { model: User, as: 'user', attributes: ['userId', 'userName', 'email', 'phone'] },
-        { model: ServiceCategory, as: 'category' },
-      ],
+      include: providerDefaultInclude,
     });
   }
 
   return profile;
 };
 
+export const formatProviderProfileResponse = async (profile) => {
+  if (!profile) return null;
+  const docCount = await ProviderDocument.count({
+    where: { provider_id: profile.id, is_deleted: false },
+  });
+
+  const plain = profile.toJSON ? profile.toJSON() : { ...profile };
+
+  const providerName = plain.user?.profile?.fullName || plain.user?.userName || '';
+  const profilePhoto = plain.user?.profile?.avatarUrl || null;
+  const trade = plain.category?.serviceCategoryName || '';
+
+  const normalizedProvider = {
+    id: plain.id,
+    userId: plain.user_id,
+    name: providerName,
+    profilePhoto,
+    trade,
+    categoryId: plain.service_category_id,
+    isVerified: Boolean(plain.is_verified),
+    verificationStatus: plain.verification_status,
+    businessName: plain.business_name || '',
+    serviceArea: plain.service_area,
+    experience: plain.experience || '',
+    languages: Array.isArray(plain.languages) ? plain.languages : [],
+    phone: plain.user?.phone || '',
+    email: plain.user?.email || '',
+  };
+
+  return {
+    ...plain,
+    fullName: providerName,
+    avatarUrl: profilePhoto,
+    provider: normalizedProvider,
+    kyc: {
+      status: plain.verification_status,
+      isVerified: Boolean(plain.is_verified),
+    },
+    documents: {
+      count: docCount,
+    },
+  };
+};
+
 export const updateMyProfile = async (userId, updateData) => {
   const profile = await getOrCreateProviderProfile(userId);
-  return await profile.update({ ...updateData, updatedAt: new Date() });
+  const { fullName, ...profileFields } = updateData;
+
+  if (fullName !== undefined) {
+    let userProfile = await UserProfile.findOne({ where: { user_id: userId } });
+    if (!userProfile) {
+      await UserProfile.create({
+        user_id: userId,
+        fullName: fullName ? String(fullName).trim() : null,
+        created_by: userId,
+      });
+    } else {
+      await userProfile.update({
+        fullName: fullName ? String(fullName).trim() : null,
+        updated_by: userId,
+        updatedAt: new Date(),
+      });
+    }
+  }
+
+  delete profileFields.is_verified;
+  delete profileFields.verification_status;
+  delete profileFields.service_category_id;
+  delete profileFields.category_id;
+
+  if (Object.keys(profileFields).length > 0) {
+    await profile.update({ ...profileFields, updatedAt: new Date() });
+  }
+
+  return await getOrCreateProviderProfile(userId);
 };
 
 export const getMyServiceArea = async (userId) => {
@@ -175,7 +267,6 @@ export const getAllProfiles = async ({ category_id, is_verified, is_online, sear
   if (category_id) where.service_category_id = category_id;
   if (is_verified !== undefined) where.is_verified = is_verified;
   if (is_online !== undefined) where.is_online = is_online;
-  if (verification_status && verification_status !== 'all') where.verification_status = verification_status;
   if (search) {
     where[Op.or] = [
       { business_name: { [Op.like]: `%${search}%` } },
@@ -187,10 +278,7 @@ export const getAllProfiles = async ({ category_id, is_verified, is_online, sear
 
   return await ServiceProviderProfile.findAndCountAll({
     where,
-    include: [
-      { model: User, as: 'user', attributes: ['userId', 'userName', 'phone', 'email'] },
-      { model: ServiceCategory, as: 'category' },
-    ],
+    include: providerDefaultInclude,
     order: [['rating', 'DESC'], ['created_at', 'DESC']],
     limit: Number(limit),
     offset,
@@ -200,10 +288,7 @@ export const getAllProfiles = async ({ category_id, is_verified, is_online, sear
 export const getProfileById = async (id) => {
   return await ServiceProviderProfile.findOne({
     where: { id, is_deleted: false },
-    include: [
-      { model: User, as: 'user', attributes: ['userId', 'userName'] },
-      { model: ServiceCategory, as: 'category' },
-    ],
+    include: providerDefaultInclude,
   });
 };
 
@@ -232,19 +317,53 @@ export const getPendingVerifications = async () => {
       is_deleted: false,
       verification_status: { [Op.in]: ['underReview', 'actionRequired'] }
     },
-    include: [
-      { model: User, as: 'user', attributes: ['userId', 'userName', 'email', 'phone'] },
-      { model: ServiceCategory, as: 'category' },
-    ]
+    include: providerDefaultInclude,
   });
 };
 
 export const verifyProfile = async (id, { is_verified, verification_status, remarks }, adminUserId) => {
   const profile = await ServiceProviderProfile.findOne({
     where: { id, is_deleted: false },
-    include: [{ model: User, as: 'user', attributes: ['userId', 'userName'] }]
+    include: providerDefaultInclude,
   });
   if (!profile) return null;
+
+  // Strict Server-Side Verification Gate when setting is_verified = true or status = 'verified'
+  if (is_verified || verification_status === 'verified') {
+    if (!profile.service_category_id) {
+      const error = new Error('Cannot verify provider: No trade category registered on profile.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const category = await ServiceCategory.findOne({
+      where: { serviceCategoryId: profile.service_category_id, is_deleted: false },
+    });
+    if (!category) {
+      const error = new Error('Cannot verify provider: Registered service category not found.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!category.kyc_configured) {
+      const error = new Error(`Cannot verify provider: Category '${category.serviceCategoryName}' KYC requirements have not been configured by admin.`);
+      error.statusCode = 400;
+      error.errorCode = 'KYC_REQUIREMENTS_NOT_CONFIGURED';
+      throw error;
+    }
+
+    const check = await getRequiredDocuments(profile.user_id);
+    if (!check.summary.is_kyc_complete) {
+      const missing = check.summary.mandatory - check.summary.satisfied_mandatory;
+      const error = new Error(
+        `Cannot approve provider: Mandatory KYC requirements not satisfied (${missing} missing/unverified, ${check.summary.pending} pending review, ${check.summary.rejected} rejected).`
+      );
+      error.statusCode = 400;
+      error.errorCode = 'MANDATORY_DOCUMENTS_MISSING';
+      error.data = check.summary;
+      throw error;
+    }
+  }
 
   const previousStatus = profile.verification_status;
   await profile.update({
@@ -284,4 +403,334 @@ export const verifyProfile = async (id, { is_verified, verification_status, rema
   }
 
   return profile;
+};
+
+// â”€â”€ Provider Documents (KYC) Services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export const getMyDocuments = async (userId) => {
+  const profile = await getOrCreateProviderProfile(userId);
+  return await ProviderDocument.findAll({
+    where: { provider_id: profile.id, is_deleted: false },
+    attributes: [
+      'id', 'provider_id', 'user_id', 'document_type', 'title',
+      'file_url', 'file_type', 'file_size', 'status',
+      'rejection_reason', 'verified_at', 'created_at', 'updatedAt'
+    ],
+    order: [['created_at', 'DESC']],
+  });
+};
+
+export const uploadMyDocument = async (userId, arg2, arg3 = {}) => {
+  let file, body;
+  if (arg2 && (arg2.mimetype || arg2.size || arg2.path || arg2.buffer)) {
+    file = arg2;
+    body = arg3 || {};
+  } else {
+    body = arg2 || {};
+    file = arg3 || {};
+  }
+  const profile = await getOrCreateProviderProfile(userId);
+  const fileUrl = getImageUrl(null, file, 'provider-documents');
+
+  let docTypeId = (body.document_type_id || body.documentTypeId) ? parseInt(body.document_type_id || body.documentTypeId, 10) : null;
+  let docTypeCode = (body.document_type || body.documentType) ? String(body.document_type || body.documentType).trim().toLowerCase() : null;
+
+  // Validate against database master kyc_document_types
+  let masterDocType = null;
+  if (docTypeId) {
+    masterDocType = await KycDocumentType.findOne({
+      where: { id: docTypeId, is_deleted: false, is_active: true },
+    });
+  } else if (docTypeCode) {
+    masterDocType = await KycDocumentType.findOne({
+      where: { code: docTypeCode, is_deleted: false, is_active: true },
+    });
+  } else {
+    masterDocType = await KycDocumentType.findOne({
+      where: { code: 'other', is_deleted: false, is_active: true },
+    });
+  }
+
+  if (!masterDocType) {
+    const error = new Error(`Invalid or inactive document type: '${docTypeCode || docTypeId}'`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Check file constraints
+  if (masterDocType.max_file_size_bytes && file.size > masterDocType.max_file_size_bytes) {
+    const error = new Error(`File exceeds maximum allowed size of ${Math.round(masterDocType.max_file_size_bytes / (1024 * 1024))}MB`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (masterDocType.requires_expiry) {
+    if (!body.expiry_date) {
+      const error = new Error(`Expiry date is required for document type '${masterDocType.name}'`);
+      error.statusCode = 400;
+      throw error;
+    }
+    const exp = new Date(body.expiry_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (isNaN(exp.getTime()) || exp < today) {
+      const error = new Error('Document expiry date cannot be in the past');
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  const doc = await ProviderDocument.create({
+    provider_id: profile.id,
+    user_id: userId,
+    document_type: masterDocType.code,
+    document_type_id: masterDocType.id,
+    title: body.title || file.originalname || masterDocType.name,
+    document_number: body.document_number ? body.document_number.trim() : null,
+    expiry_date: body.expiry_date || null,
+    issue_date: body.issue_date || null,
+    file_url: fileUrl,
+    file_type: file.mimetype,
+    file_size: file.size,
+    status: 'under_review',
+    created_by: userId,
+  });
+
+  if (profile.verification_status === 'notSubmitted' || profile.verification_status === 'actionRequired') {
+    await profile.update({ verification_status: 'underReview', updatedAt: new Date() });
+  }
+
+  return doc;
+};
+
+export const deleteMyDocument = async (userId, documentId) => {
+  const profile = await getOrCreateProviderProfile(userId);
+  const doc = await ProviderDocument.findOne({
+    where: { id: documentId, provider_id: profile.id, is_deleted: false },
+  });
+  if (!doc) return null;
+
+  await doc.update({ is_deleted: true, updated_by: userId, updatedAt: new Date() });
+  return true;
+};
+
+export const verifyProviderDocument = async (documentId, { status, rejection_reason }, adminUserId) => {
+  const doc = await ProviderDocument.findOne({
+    where: { id: documentId, is_deleted: false },
+  });
+  if (!doc) return null;
+
+  const previousStatus = doc.status;
+  await doc.update({
+    status,
+    rejection_reason: rejection_reason || null,
+    verified_by: adminUserId,
+    verified_at: new Date(),
+    updated_by: adminUserId,
+    updatedAt: new Date(),
+  });
+
+  await audit({
+    actorId: adminUserId,
+    action: 'PROVIDER_DOCUMENT_VERIFIED',
+    targetType: 'provider_document',
+    targetId: doc.id,
+    before: { status: previousStatus },
+    after: { status, rejection_reason },
+  });
+
+  // Notify provider
+  await emitNotification({
+    recipientId: doc.user_id,
+    actorId: adminUserId,
+    type: 'document_verification',
+    title: status === 'verified' ? 'Document Verified' : 'Document Rejected',
+    message: status === 'verified'
+      ? `Your document (${doc.document_type}) has been approved.`
+      : `Your document (${doc.document_type}) was rejected.${rejection_reason ? ' Reason: ' + rejection_reason : ''}`,
+    data: { target: 'provider_document', documentId: doc.id, status },
+    preferenceKey: 'booking_requests',
+    sendPush: true,
+  });
+
+  return doc;
+};
+
+
+export const getRequiredDocuments = async (userId) => {
+  const profile = await getOrCreateProviderProfile(userId);
+  if (!profile.service_category_id) {
+    return {
+      is_configured: false,
+      configuration_message: 'Provider has not registered a trade category yet.',
+      category: null,
+      summary: { total: 0, mandatory: 0, satisfied_mandatory: 0, pending: 0, rejected: 0, is_kyc_complete: false },
+      checklist: [],
+    };
+  }
+
+  const category = await ServiceCategory.findOne({
+    where: { serviceCategoryId: profile.service_category_id, is_deleted: false },
+  });
+
+  if (!category) {
+    return {
+      is_configured: false,
+      configuration_message: 'Category assigned to provider not found.',
+      category: null,
+      summary: { total: 0, mandatory: 0, satisfied_mandatory: 0, pending: 0, rejected: 0, is_kyc_complete: false },
+      checklist: [],
+    };
+  }
+
+  // Fetch active requirements for this category
+  const requirements = await CategoryDocumentRequirement.findAll({
+    where: {
+      service_category_id: profile.service_category_id,
+      is_active: true,
+      is_deleted: false,
+      [Op.or]: [
+        { applicable_provider_type: null },
+        { applicable_provider_type: profile.provider_type },
+      ],
+    },
+    include: [{ model: KycDocumentType, as: 'documentType', where: { is_deleted: false } }],
+    order: [['is_mandatory', 'DESC'], ['id', 'ASC']],
+  });
+
+  // Fetch provider's active uploaded documents
+  const documents = await ProviderDocument.findAll({
+    where: { provider_id: profile.id, is_deleted: false },
+    order: [['created_at', 'DESC']],
+  });
+
+  const today = new Date().toISOString().split('T')[0];
+
+  let mandatoryCount = 0;
+  let satisfiedMandatoryCount = 0;
+  let pendingCount = 0;
+  let rejectedCount = 0;
+
+  const checklist = requirements.map((req) => {
+    const docType = req.documentType;
+    if (req.is_mandatory) mandatoryCount++;
+
+    const matchingDocs = documents.filter(
+      (d) => (d.document_type_id && Number(d.document_type_id) === Number(docType.id)) ||
+             (d.document_type && d.document_type === docType.code)
+    );
+
+    const doc = matchingDocs[0] || null;
+
+    let uploadStatus = 'not_uploaded';
+    let reviewStatus = 'not_uploaded';
+    let isSatisfied = false;
+    let isExpired = false;
+
+    if (doc) {
+      uploadStatus = 'uploaded';
+      reviewStatus = doc.status;
+      if (doc.status === 'under_review') pendingCount++;
+      if (doc.status === 'rejected') rejectedCount++;
+
+      if (doc.expiry_date) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const expStr = new Date(doc.expiry_date).toISOString().split('T')[0];
+        if (expStr < todayStr) {
+          isExpired = true;
+          reviewStatus = 'expired';
+        }
+      }
+
+      if (doc.status === 'verified' && !isExpired) {
+        isSatisfied = true;
+        if (req.is_mandatory) satisfiedMandatoryCount++;
+      }
+    }
+
+    return {
+      requirement_id: req.id,
+      document_type_id: docType.id,
+      code: docType.code,
+      name: docType.name,
+      description: docType.description,
+      is_mandatory: req.is_mandatory,
+      requires_expiry: docType.requires_expiry,
+      allowed_mime_types: docType.allowed_mime_types,
+      upload_status: uploadStatus,
+      review_status: reviewStatus,
+      is_satisfied: isSatisfied,
+      is_expired: isExpired,
+      document_id: doc ? doc.id : null,
+      file_url: doc ? doc.file_url : null,
+      document_number: doc ? doc.document_number : null,
+      expiry_date: doc ? doc.expiry_date : null,
+      issue_date: doc ? doc.issue_date : null,
+      rejection_reason: doc ? doc.rejection_reason : null,
+      verified_at: doc ? doc.verified_at : null,
+      updatedAt: doc ? doc.updatedAt : null,
+    };
+  });
+
+  const isConfigured = Boolean(category.kyc_configured);
+  const isKycComplete = isConfigured && (mandatoryCount === 0 || satisfiedMandatoryCount === mandatoryCount);
+
+  return {
+    is_configured: isConfigured,
+    configuration_message: isConfigured
+      ? (mandatoryCount === 0 ? 'Category has zero additional mandatory requirements policy.' : 'Requirements active.')
+      : 'Category KYC requirements have not been configured by admin yet.',
+    category: {
+      id: category.serviceCategoryId,
+      name: category.serviceCategoryName,
+      kyc_configured: isConfigured,
+    },
+    summary: {
+      total: requirements.length,
+      mandatory: mandatoryCount,
+      satisfied_mandatory: satisfiedMandatoryCount,
+      pending: pendingCount,
+      rejected: rejectedCount,
+      is_kyc_complete: isKycComplete,
+    },
+    checklist,
+  };
+};
+
+export const getProviderDocumentsForAdmin = async (providerId) => {
+  const profile = await ServiceProviderProfile.findOne({
+    where: { id: providerId, is_deleted: false },
+    include: providerDefaultInclude,
+  });
+  if (!profile) return null;
+
+  const docs = await ProviderDocument.findAll({
+    where: { provider_id: profile.id, is_deleted: false },
+    include: [
+      {
+        model: KycDocumentType,
+        as: 'masterDocumentType',
+        attributes: ['id', 'code', 'name', 'requires_expiry', 'allowed_mime_types'],
+      },
+    ],
+    order: [['created_at', 'DESC']],
+  });
+
+  const check = profile.user_id ? await getRequiredDocuments(profile.user_id) : null;
+
+  return {
+    provider: {
+      id: profile.id,
+      user_id: profile.user_id,
+      business_name: profile.business_name,
+      provider_type: profile.provider_type,
+      is_verified: profile.is_verified,
+      verification_status: profile.verification_status,
+      category_id: profile.service_category_id,
+      category_name: profile.category?.serviceCategoryName || null,
+    },
+    documents: docs.map((d) => d.toJSON()),
+    requirements_summary: check?.summary || null,
+    checklist: check?.checklist || [],
+  };
 };

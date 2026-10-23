@@ -208,3 +208,19 @@ export const deleteBooking = async (req, res, next) => {
     next(error);
   }
 };
+
+
+export const getAvailableSlotsForListing = async (req, res, next) => {
+  try {
+    const { listingId } = req.params;
+    const { date } = req.query;
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const data = await serviceBookingService.getAvailableSlots(listingId, targetDate);
+    return successResponse(res, 200, 'Available slots fetched successfully', data);
+  } catch (error) {
+    if (error.statusCode) {
+      return errorResponse(res, error.statusCode, error.message);
+    }
+    next(error);
+  }
+};

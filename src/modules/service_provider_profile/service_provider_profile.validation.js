@@ -1,4 +1,4 @@
-import Joi from 'joi';
+﻿import Joi from 'joi';
 
 export const updateProviderProfileSchema = Joi.object({
   service_category_id: Joi.number().integer().positive().allow(null).optional(),
@@ -8,7 +8,20 @@ export const updateProviderProfileSchema = Joi.object({
   experience: Joi.string().trim().max(100).allow(null, '').optional(),
   hourly_rate: Joi.number().min(0).max(999999.99).allow(null).optional(),
   is_online: Joi.boolean().optional(),
-});
+  languages: Joi.array()
+    .items(Joi.string().trim().min(1).max(50))
+    .unique()
+    .max(15)
+    .optional(),
+  fullName: Joi.string().trim().min(1).max(100).allow(null, '').optional(),
+  service_area: Joi.alternatives().try(Joi.object(), Joi.string()).optional(),
+  availability: Joi.alternatives().try(Joi.object(), Joi.string()).optional(),
+  is_verified: Joi.forbidden().messages({ 'any.unknown': 'You are not allowed to modify verification status' }),
+  verification_status: Joi.forbidden().messages({ 'any.unknown': 'You are not allowed to modify verification status' }),
+  rating: Joi.forbidden(),
+  review_count: Joi.forbidden(),
+  completed_jobs_count: Joi.forbidden(),
+}).unknown(false);
 
 export const updateServiceAreaSchema = Joi.object({
   city: Joi.string().trim().min(2).max(100).required(),
@@ -42,4 +55,18 @@ export const verifyProviderSchema = Joi.object({
   is_verified: Joi.boolean().required(),
   verification_status: Joi.string().valid('notSubmitted', 'underReview', 'verified', 'rejected', 'actionRequired').required(),
   remarks: Joi.string().trim().max(1000).allow(null, '').optional(),
+});
+
+export const uploadProviderDocumentSchema = Joi.object({
+  document_type: Joi.string().trim().max(50).optional(),
+  document_type_id: Joi.number().integer().positive().optional(),
+  title: Joi.string().trim().max(255).allow(null, '').optional(),
+  document_number: Joi.string().trim().max(100).allow(null, '').optional(),
+  expiry_date: Joi.date().iso().allow(null).optional(),
+  issue_date: Joi.date().iso().allow(null).optional(),
+});
+
+export const verifyProviderDocumentSchema = Joi.object({
+  status: Joi.string().valid('verified', 'rejected', 'under_review').required(),
+  rejection_reason: Joi.string().trim().max(1000).allow(null, '').optional(),
 });

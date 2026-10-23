@@ -1,4 +1,4 @@
-import { DataTypes } from 'sequelize';
+﻿import { DataTypes } from 'sequelize';
 import sequelize from '../../config/db.js';
 import { commonFields } from '../../utils/commonFields.js';
 import User from '../user/user.model.js';
@@ -46,6 +46,41 @@ const ServiceProviderProfile = sequelize.define('ServiceProviderProfile', {
   hourly_rate: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,
+  },
+  languages: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: [],
+    get() {
+      const raw = this.getDataValue('languages');
+      if (!raw) return [];
+      try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_) {
+        return [];
+      }
+    },
+    set(val) {
+      if (Array.isArray(val)) {
+        const unique = [...new Set(val.map((s) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean))];
+        this.setDataValue('languages', unique);
+      } else if (typeof val === 'string') {
+        try {
+          const parsed = JSON.parse(val);
+          if (Array.isArray(parsed)) {
+            const unique = [...new Set(parsed.map((s) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean))];
+            this.setDataValue('languages', unique);
+          } else {
+            this.setDataValue('languages', val.trim() ? [val.trim()] : []);
+          }
+        } catch (_) {
+          this.setDataValue('languages', val.trim() ? [val.trim()] : []);
+        }
+      } else {
+        this.setDataValue('languages', []);
+      }
+    },
   },
   is_verified: {
     type: DataTypes.BOOLEAN,

@@ -1,4 +1,4 @@
-import {
+﻿import {
   ServiceDurationOption,
   ServiceBufferOption,
   ServiceExecutionMethod,
@@ -139,6 +139,12 @@ export const parseLegacyDurationStringToMinutes = (str) => {
 
 /**
  * Parses a scheduled_at date and time_slot string into absolute start and end Date objects.
+ *
+ * Supports multiple slot formats:
+ *   - "09:00 AM"            -> single start time
+ *   - "09:00 AM - 10:00 AM" -> start - end range (dash delimiter)
+ *   - "09:00 AM → 10:00 AM" -> start → end range (arrow delimiter)
+ *   - "09:00 AM to 10:00 AM"-> start to end range (text delimiter)
  */
 export const parseTimeSlotInterval = (scheduledAt, timeSlotStr, totalOccupancyMinutes = 60) => {
   const baseDate = new Date(scheduledAt);
@@ -150,13 +156,26 @@ export const parseTimeSlotInterval = (scheduledAt, timeSlotStr, totalOccupancyMi
   let endClock = null;
 
   if (timeSlotStr && typeof timeSlotStr === 'string') {
-    const delimiter = timeSlotStr.includes('–') ? '–' : (timeSlotStr.includes('-') ? '-' : null);
-    if (delimiter) {
-      const parts = timeSlotStr.split(delimiter).map(p => p.trim());
-      if (parts[0]) startClock = parts[0];
-      if (parts[1]) endClock = parts[1];
+    const slot = timeSlotStr.trim();
+
+    // Detect delimiter: Unicode arrow '→' (U+2192), ASCII '-', or word 'to'
+    // Use regex to handle all variants safely (avoids Unicode encoding issues)
+    const arrowMatch = slot.match(/^(.+?)\s*(?:\u2192|->|to)\s*(.+)$/i);
+    const dashMatch = !arrowMatch && slot.match(/^(.+?)\s*-\s*(.+)$/);
+
+    if (arrowMatch) {
+      startClock = arrowMatch[1].trim();
+      endClock = arrowMatch[2].trim();
+    } else if (dashMatch) {
+      // Only treat as range if both halves look like clock times (contain digits)
+      if (/\d/.test(dashMatch[1]) && /\d/.test(dashMatch[2])) {
+        startClock = dashMatch[1].trim();
+        endClock = dashMatch[2].trim();
+      } else {
+        startClock = slot;
+      }
     } else {
-      startClock = timeSlotStr.trim();
+      startClock = slot;
     }
   }
 
@@ -196,10 +215,129 @@ function parseClockToDate(baseDate, clockStr) {
   let hours = parseInt(hStr, 10);
   const minutes = parseInt(mStr || '0', 10);
 
+  if (isNaN(hours) || isNaN(minutes)) return new Date(baseDate);
+
   if (amPm === 'PM' && hours < 12) hours += 12;
   if (amPm === 'AM' && hours === 12) hours = 0;
 
   const d = new Date(baseDate);
   d.setHours(hours, minutes, 0, 0);
   return d;
+}
+
+/**
+ * Computes authoritative available time slots for a service listing on a given target date.
+ */
+export const getAvailableSlotsForDate = async (listingId, targetDateStr) => {
+  const listing = await ServiceListing.findOne({
+    where: { id: listingId, is_deleted: false },
+    include: [
+      { model: ServiceDurationOption, as: 'duration_option' },
+      { model: ServiceBufferOption, as: 'buffer_option' },
+      { model: ServiceBookingCapacity, as: 'booking_capacity' },
+    ],
+  });
+
+  if (!listing) {
+    const err = new Error('Service listing not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const durationConfig = await resolveServiceDurationConfig(listing);
+  const slotStepMinutes = durationConfig.totalOccupancyMinutes > 0 ? durationConfig.totalOccupancyMinutes : 60;
+  const capacity = durationConfig.capacity || 1;
+
+  const targetDate = new Date(targetDateStr);
+  if (isNaN(targetDate.getTime())) {
+    const err = new Error('Invalid target date format. Expected YYYY-MM-DD');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const workStartHour = 9;
+  const workEndHour = 19;
+
+  const startOfDay = new Date(targetDate);
+  startOfDay.setHours(workStartHour, 0, 0, 0);
+
+  const endOfDay = new Date(targetDate);
+  endOfDay.setHours(workEndHour, 0, 0, 0);
+
+  const providerId = listing.provider_id;
+  const ServiceBooking = (await import('./service_booking.model.js')).default;
+  const { Op } = await import('sequelize');
+
+  const dayStart = new Date(targetDate);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(targetDate);
+  dayEnd.setHours(23, 59, 59, 999);
+
+  const existingBookings = await ServiceBooking.findAll({
+    where: {
+      provider_id: providerId,
+      is_deleted: false,
+      status: { [Op.in]: ['requested', 'pending', 'accepted', 'confirmed', 'scheduled', 'on_the_way', 'started', 'in_progress'] },
+      scheduled_at: { [Op.gte]: dayStart, [Op.lte]: dayEnd },
+    },
+    attributes: ['id', 'scheduled_at', 'occupied_until', 'time_slot'],
+  });
+
+  const slots = [];
+  let currentSlotStart = new Date(startOfDay);
+
+  const now = new Date();
+  const isToday = now.toDateString() === targetDate.toDateString();
+
+  while (currentSlotStart.getTime() + slotStepMinutes * 60000 <= endOfDay.getTime()) {
+    const currentSlotEnd = new Date(currentSlotStart.getTime() + slotStepMinutes * 60000);
+    const slotLabel = formatTimeSlotLabel(currentSlotStart, currentSlotEnd);
+
+    let isPast = false;
+    if (isToday && currentSlotStart.getTime() <= now.getTime()) {
+      isPast = true;
+    }
+
+    const overlapCount = existingBookings.filter((b) => {
+      const bStart = new Date(b.scheduled_at);
+      const bEnd = new Date(b.occupied_until || (bStart.getTime() + slotStepMinutes * 60000));
+      return (bStart < currentSlotEnd) && (bEnd > currentSlotStart);
+    }).length;
+
+    const isAvailable = !isPast && (overlapCount < capacity) && Boolean(listing.is_available);
+
+    slots.push({
+      slot: slotLabel,
+      startTime: currentSlotStart.toISOString(),
+      endTime: currentSlotEnd.toISOString(),
+      isAvailable,
+      reason: isPast ? 'PAST_TIME' : (overlapCount >= capacity ? 'ALREADY_BOOKED' : 'AVAILABLE'),
+    });
+
+    currentSlotStart = new Date(currentSlotStart.getTime() + slotStepMinutes * 60000);
+  }
+
+  return {
+    date: targetDateStr,
+    durationMinutes: durationConfig.durationMinutes,
+    bufferMinutes: durationConfig.bufferMinutes,
+    totalOccupancyMinutes: durationConfig.totalOccupancyMinutes,
+    capacity,
+    isListingAvailable: listing.is_available,
+    slots,
+  };
+};
+
+function formatTimeSlotLabel(startDate, endDate) {
+  const formatClock = (d) => {
+    let hours = d.getHours();
+    const minutes = d.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const mStr = minutes < 10 ? '0' + minutes : minutes;
+    const hStr = hours < 10 ? '0' + hours : hours;
+    return hStr + ':' + mStr + ' ' + ampm;
+  };
+  return formatClock(startDate) + ' - ' + formatClock(endDate);
 }
