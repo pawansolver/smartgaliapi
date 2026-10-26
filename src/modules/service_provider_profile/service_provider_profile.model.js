@@ -138,6 +138,34 @@ const ServiceProviderProfile = sequelize.define('ServiceProviderProfile', {
       this.setDataValue('availability', val && typeof val === 'object' ? JSON.stringify(val) : val);
     }
   },
+  auto_accept_bookings: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  priority_emergency_dispatch: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
+  vacation_mode: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  notification_preferences: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    get() {
+      const raw = this.getDataValue('notification_preferences');
+      if (!raw) return { notifBookings: true, notifStatusReminders: true, notifReviews: true, notifPayouts: true };
+      try {
+        return typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } catch (_) {
+        return { notifBookings: true, notifStatusReminders: true, notifReviews: true, notifPayouts: true };
+      }
+    },
+    set(val) {
+      this.setDataValue('notification_preferences', val && typeof val === 'object' ? JSON.stringify(val) : val);
+    }
+  },
   ...commonFields
 }, {
   timestamps: false,

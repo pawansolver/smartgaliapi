@@ -72,6 +72,7 @@ router.post('/bulk-delete', authenticate, requireGlobalAdmin, serviceListingCont
 router.get('/', optionalAuthenticate, validateQuery(queryListingsSchema), serviceListingController.getAllListings);
 router.get('/:id', optionalAuthenticate, serviceListingController.getListingById);
 router.post('/:id/calculate-price', optionalAuthenticate, serviceListingController.calculatePrice);
+router.all('/:id/check-coverage', optionalAuthenticate, serviceListingController.checkCoverage);
 
 // ── Step 5: Enterprise Media & KYC Routes ────────────────────────────────────
 

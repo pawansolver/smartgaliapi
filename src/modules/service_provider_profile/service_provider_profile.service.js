@@ -1,4 +1,7 @@
-﻿import { Op } from 'sequelize';
+﻿import path from 'path';
+import fs from 'fs';
+import env from '../../config/env.js';
+import { Op } from 'sequelize';
 import ServiceProviderProfile from './service_provider_profile.model.js';
 import ProviderDocument from './provider_document.model.js';
 import User from '../user/user.model.js';
@@ -98,6 +101,16 @@ export const formatProviderProfileResponse = async (profile) => {
   const profilePhoto = plain.user?.profile?.avatarUrl || null;
   const trade = plain.category?.serviceCategoryName || '';
 
+  const autoAcceptBookings = Boolean(plain.auto_accept_bookings);
+  const emergencyDispatch = plain.priority_emergency_dispatch !== undefined ? Boolean(plain.priority_emergency_dispatch) : true;
+  const vacationMode = Boolean(plain.vacation_mode);
+  const notificationPreferences = plain.notification_preferences || {
+    notifBookings: true,
+    notifStatusReminders: true,
+    notifReviews: true,
+    notifPayouts: true,
+  };
+
   const normalizedProvider = {
     id: plain.id,
     userId: plain.user_id,
@@ -113,10 +126,27 @@ export const formatProviderProfileResponse = async (profile) => {
     languages: Array.isArray(plain.languages) ? plain.languages : [],
     phone: plain.user?.phone || '',
     email: plain.user?.email || '',
+    autoAcceptBookings,
+    emergencyDispatch,
+    vacationMode,
+    notificationPreferences,
   };
 
   return {
     ...plain,
+    auto_accept_bookings: autoAcceptBookings,
+    autoAcceptBookings,
+    priority_emergency_dispatch: emergencyDispatch,
+    emergencyDispatch,
+    vacation_mode: vacationMode,
+    vacationMode,
+    notification_preferences: notificationPreferences,
+    notificationPreferences,
+    operationalPreferences: {
+      autoAcceptBookings,
+      emergencyDispatch,
+      vacationMode,
+    },
     fullName: providerName,
     avatarUrl: profilePhoto,
     provider: normalizedProvider,
@@ -155,6 +185,29 @@ export const updateMyProfile = async (userId, updateData) => {
   delete profileFields.verification_status;
   delete profileFields.service_category_id;
   delete profileFields.category_id;
+  if (profileFields.businessName !== undefined) {
+    if (profileFields.business_name === undefined) profileFields.business_name = profileFields.businessName;
+    delete profileFields.businessName;
+  }
+  if (profileFields.experience !== undefined && profileFields.experience !== null) {
+    profileFields.experience = String(profileFields.experience);
+  }
+  if (profileFields.autoAcceptBookings !== undefined && profileFields.auto_accept_bookings === undefined) {
+    profileFields.auto_accept_bookings = Boolean(profileFields.autoAcceptBookings);
+    delete profileFields.autoAcceptBookings;
+  }
+  if (profileFields.emergencyDispatch !== undefined && profileFields.priority_emergency_dispatch === undefined) {
+    profileFields.priority_emergency_dispatch = Boolean(profileFields.emergencyDispatch);
+    delete profileFields.emergencyDispatch;
+  }
+  if (profileFields.vacationMode !== undefined && profileFields.vacation_mode === undefined) {
+    profileFields.vacation_mode = Boolean(profileFields.vacationMode);
+    delete profileFields.vacationMode;
+  }
+  if (profileFields.notificationPreferences !== undefined && profileFields.notification_preferences === undefined) {
+    profileFields.notification_preferences = profileFields.notificationPreferences;
+    delete profileFields.notificationPreferences;
+  }
 
   if (Object.keys(profileFields).length > 0) {
     await profile.update({ ...profileFields, updatedAt: new Date() });
@@ -464,13 +517,17 @@ export const uploadMyDocument = async (userId, arg2, arg3 = {}) => {
     throw error;
   }
 
+  const effectiveDocNumber = (body.document_number || body.documentNumber) ? String(body.document_number || body.documentNumber).trim() : null;
+  const effectiveExpiry = body.expiry_date || body.expiryDate || null;
+  const effectiveIssue = body.issue_date || body.issueDate || null;
+
   if (masterDocType.requires_expiry) {
-    if (!body.expiry_date) {
+    if (!effectiveExpiry) {
       const error = new Error(`Expiry date is required for document type '${masterDocType.name}'`);
       error.statusCode = 400;
       throw error;
     }
-    const exp = new Date(body.expiry_date);
+    const exp = new Date(effectiveExpiry);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (isNaN(exp.getTime()) || exp < today) {
@@ -486,9 +543,9 @@ export const uploadMyDocument = async (userId, arg2, arg3 = {}) => {
     document_type: masterDocType.code,
     document_type_id: masterDocType.id,
     title: body.title || file.originalname || masterDocType.name,
-    document_number: body.document_number ? body.document_number.trim() : null,
-    expiry_date: body.expiry_date || null,
-    issue_date: body.issue_date || null,
+    document_number: effectiveDocNumber,
+    expiry_date: effectiveExpiry,
+    issue_date: effectiveIssue,
     file_url: fileUrl,
     file_type: file.mimetype,
     file_size: file.size,
@@ -733,4 +790,148 @@ export const getProviderDocumentsForAdmin = async (providerId) => {
     requirements_summary: check?.summary || null,
     checklist: check?.checklist || [],
   };
+};
+
+export const getProviderDocumentFile = async (documentId, userId, isAdmin) => {
+  const doc = await ProviderDocument.findOne({
+    where: { id: documentId, is_deleted: false },
+  });
+  if (!doc) {
+    const error = new Error('KYC Document not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (!isAdmin && Number(doc.user_id) !== Number(userId)) {
+    const error = new Error('Access denied: You do not have permission to access this document.');
+    error.statusCode = 403;
+    throw error;
+  }
+  const filename = path.basename(doc.file_url);
+  const filePath = path.join(env.uploadsPath, 'provider-documents', filename);
+  if (!fs.existsSync(filePath)) {
+    const error = new Error('Document file not found on storage server.');
+    error.statusCode = 404;
+    throw error;
+  }
+  return { filePath, filename, doc };
+};
+
+
+export const getMyOperationalPreferences = async (userId) => {
+  const profile = await getOrCreateProviderProfile(userId);
+  const plain = profile.toJSON ? profile.toJSON() : { ...profile };
+  const autoAcceptBookings = Boolean(plain.auto_accept_bookings);
+  const emergencyDispatch = plain.priority_emergency_dispatch !== undefined ? Boolean(plain.priority_emergency_dispatch) : true;
+  const vacationMode = Boolean(plain.vacation_mode);
+  const notificationPreferences = plain.notification_preferences || {
+    notifBookings: true,
+    notifStatusReminders: true,
+    notifReviews: true,
+    notifPayouts: true,
+  };
+
+  return {
+    auto_accept_bookings: autoAcceptBookings,
+    autoAcceptBookings,
+    priority_emergency_dispatch: emergencyDispatch,
+    emergencyDispatch,
+    vacation_mode: vacationMode,
+    vacationMode,
+    notification_preferences: notificationPreferences,
+    notificationPreferences,
+  };
+};
+
+export const updateMyOperationalPreferences = async (userId, prefsData) => {
+  const profile = await getOrCreateProviderProfile(userId);
+  const plain = profile.toJSON ? profile.toJSON() : { ...profile };
+  const updates = {};
+  if (prefsData.auto_accept_bookings !== undefined) updates.auto_accept_bookings = Boolean(prefsData.auto_accept_bookings);
+  if (prefsData.autoAcceptBookings !== undefined) updates.auto_accept_bookings = Boolean(prefsData.autoAcceptBookings);
+  if (prefsData.priority_emergency_dispatch !== undefined) updates.priority_emergency_dispatch = Boolean(prefsData.priority_emergency_dispatch);
+  if (prefsData.emergencyDispatch !== undefined) updates.priority_emergency_dispatch = Boolean(prefsData.emergencyDispatch);
+  if (prefsData.vacation_mode !== undefined) updates.vacation_mode = Boolean(prefsData.vacation_mode);
+  if (prefsData.vacationMode !== undefined) updates.vacation_mode = Boolean(prefsData.vacationMode);
+  const currentPrefs = plain.notification_preferences || {};
+  const incomingPrefs = prefsData.notificationPreferences || prefsData.notification_preferences;
+  if (incomingPrefs && typeof incomingPrefs === 'object') {
+    updates.notification_preferences = {
+      ...currentPrefs,
+      ...incomingPrefs,
+    };
+  } else if (incomingPrefs !== undefined) {
+    updates.notification_preferences = incomingPrefs;
+  }
+
+  updates.updatedAt = new Date();
+  await profile.update(updates);
+  return getMyOperationalPreferences(userId);
+};
+
+
+export const getMyNotificationPreferences = async (userId) => {
+  const profile = await getOrCreateProviderProfile(userId);
+  const plain = profile.toJSON ? profile.toJSON() : { ...profile };
+  const prefs = plain.notification_preferences || {};
+
+  const notifBookings = prefs.notifBookings !== undefined ? Boolean(prefs.notifBookings) : (prefs.newBookingRequests !== undefined ? Boolean(prefs.newBookingRequests) : true);
+  const notifStatusReminders = prefs.notifStatusReminders !== undefined ? Boolean(prefs.notifStatusReminders) : (prefs.jobReminders !== undefined ? Boolean(prefs.jobReminders) : true);
+  const notifReviews = prefs.notifReviews !== undefined ? Boolean(prefs.notifReviews) : (prefs.customerReviews !== undefined ? Boolean(prefs.customerReviews) : true);
+  const notifPayouts = prefs.notifPayouts !== undefined ? Boolean(prefs.notifPayouts) : (prefs.settlementsPayouts !== undefined ? Boolean(prefs.settlementsPayouts) : true);
+
+  return {
+    notifBookings,
+    newBookingRequests: notifBookings,
+    notifStatusReminders,
+    jobReminders: notifStatusReminders,
+    notifReviews,
+    customerReviews: notifReviews,
+    notifPayouts,
+    settlementsPayouts: notifPayouts,
+  };
+};
+
+export const updateMyNotificationPreferences = async (userId, notifData) => {
+  const profile = await getOrCreateProviderProfile(userId);
+  const plain = profile.toJSON ? profile.toJSON() : { ...profile };
+  const current = plain.notification_preferences || {};
+
+  const updatedPrefs = {
+    notifBookings: current.notifBookings !== undefined ? current.notifBookings : (current.newBookingRequests !== undefined ? current.newBookingRequests : true),
+    notifStatusReminders: current.notifStatusReminders !== undefined ? current.notifStatusReminders : (current.jobReminders !== undefined ? current.jobReminders : true),
+    notifReviews: current.notifReviews !== undefined ? current.notifReviews : (current.customerReviews !== undefined ? current.customerReviews : true),
+    notifPayouts: current.notifPayouts !== undefined ? current.notifPayouts : (current.settlementsPayouts !== undefined ? current.settlementsPayouts : true),
+  };
+
+  if (notifData.notifBookings !== undefined) updatedPrefs.notifBookings = Boolean(notifData.notifBookings);
+  if (notifData.newBookingRequests !== undefined) updatedPrefs.notifBookings = Boolean(notifData.newBookingRequests);
+  if (notifData.notif_bookings !== undefined) updatedPrefs.notifBookings = Boolean(notifData.notif_bookings);
+
+  if (notifData.notifStatusReminders !== undefined) updatedPrefs.notifStatusReminders = Boolean(notifData.notifStatusReminders);
+  if (notifData.jobReminders !== undefined) updatedPrefs.notifStatusReminders = Boolean(notifData.jobReminders);
+  if (notifData.notif_status_reminders !== undefined) updatedPrefs.notifStatusReminders = Boolean(notifData.notif_status_reminders);
+
+  if (notifData.notifReviews !== undefined) updatedPrefs.notifReviews = Boolean(notifData.notifReviews);
+  if (notifData.customerReviews !== undefined) updatedPrefs.notifReviews = Boolean(notifData.customerReviews);
+  if (notifData.notif_reviews !== undefined) updatedPrefs.notifReviews = Boolean(notifData.notif_reviews);
+
+  if (notifData.notifPayouts !== undefined) updatedPrefs.notifPayouts = Boolean(notifData.notifPayouts);
+  if (notifData.settlementsPayouts !== undefined) updatedPrefs.notifPayouts = Boolean(notifData.settlementsPayouts);
+  if (notifData.notif_payouts !== undefined) updatedPrefs.notifPayouts = Boolean(notifData.notif_payouts);
+
+  await profile.update({
+    notification_preferences: updatedPrefs,
+    updatedAt: new Date(),
+  });
+
+  // Optional: keep NotificationPreference row synchronized if present
+  try {
+    const NotificationPreference = (await import('../profile/notification_preference.model.js')).default;
+    await NotificationPreference.update(
+      { booking_requests: updatedPrefs.notifBookings, updatedAt: new Date() },
+      { where: { user_id: userId } }
+    );
+  } catch (_) {}
+
+  return getMyNotificationPreferences(userId);
 };

@@ -468,6 +468,9 @@ export const listSubcategoryRequests = async (options = {}) => {
   if (options.providerId) {
     where.provider_id = options.providerId;
   }
+  if (options.userId) {
+    where.user_id = options.userId;
+  }
 
   return await ServiceSubcategoryRequest.findAll({
     where,
@@ -519,6 +522,12 @@ export const reviewSubcategoryRequest = async (requestId, { status, review_note,
   if (!req) {
     const error = new Error('Service subcategory request not found');
     error.statusCode = 404;
+    throw error;
+  }
+
+  if (req.status !== 'pending') {
+    const error = new Error('Request has already been ' + req.status + ' and cannot be reviewed again');
+    error.statusCode = 400;
     throw error;
   }
 

@@ -266,3 +266,64 @@ export const getProviderDocumentsForAdmin = async (req, res, next) => {
     next(error);
   }
 };
+
+export const getProviderDocumentFile = async (req, res, next) => {
+  try {
+    const documentId = parseInt(req.params.documentId, 10);
+    if (!documentId || isNaN(documentId)) {
+      return errorResponse(res, 400, 'Invalid document ID');
+    }
+    const userId = req.user?.id || req.user?.userId;
+    const isAdmin = isGlobalAdminUser(req.user);
+    const { filePath, filename } = await serviceProviderProfileService.getProviderDocumentFile(documentId, userId, isAdmin);
+
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    return res.sendFile(filePath);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const getMyOperationalPreferences = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const prefs = await serviceProviderProfileService.getMyOperationalPreferences(userId);
+    return successResponse(res, 200, 'Operational preferences retrieved successfully', prefs);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateMyOperationalPreferences = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const updated = await serviceProviderProfileService.updateMyOperationalPreferences(userId, req.body);
+    return successResponse(res, 200, 'Operational preferences updated successfully', updated);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const getMyNotificationPreferences = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const prefs = await serviceProviderProfileService.getMyNotificationPreferences(userId);
+    return successResponse(res, 200, 'Notification preferences retrieved successfully', prefs);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateMyNotificationPreferences = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const updated = await serviceProviderProfileService.updateMyNotificationPreferences(userId, req.body);
+    return successResponse(res, 200, 'Notification preferences updated successfully', updated);
+  } catch (error) {
+    next(error);
+  }
+};

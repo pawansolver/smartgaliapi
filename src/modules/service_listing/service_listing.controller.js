@@ -1,3 +1,4 @@
+import { evaluateLiveCoverage } from './service_coverage.service.js';
 import { successResponse, errorResponse } from '../../utils/response.js';
 import * as serviceListingService from './service_listing.service.js';
 import { toPublicServiceListing } from './service_listing.projection.js';
@@ -155,7 +156,7 @@ export const bulkDeleteListings = async (req, res, next) => {
 export const calculatePrice = async (req, res, next) => {
   try {
     const listingId = req.params.id;
-    const { package_id, addon_ids, duration_hours, material_charge, discount_amount } = req.body;
+    const { package_id, addon_ids, duration_hours, material_charge, discount_amount, tax_rate, platform_fee } = req.body;
     const calculation = await serviceListingService.calculateAuthoritativeServicePrice({
       listingId,
       packageId: package_id,
@@ -163,6 +164,8 @@ export const calculatePrice = async (req, res, next) => {
       durationHours: duration_hours,
       materialCharge: material_charge,
       discountAmount: discount_amount,
+      taxRate: tax_rate !== undefined ? Number(tax_rate) : 0.03,
+      platformFee: platform_fee !== undefined ? Number(platform_fee) : 29.00,
     });
     return successResponse(res, 200, 'Authoritative service price calculated successfully', calculation);
   } catch (error) {
@@ -238,6 +241,23 @@ export const toggleListingStatus = async (req, res, next) => {
     const { is_available } = req.body;
     const listing = await serviceListingService.adminToggleListingStatus(req.params.id, is_available, actorId);
     return successResponse(res, 200, 'Service listing status updated successfully', listing);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const checkCoverage = async (req, res, next) => {
+  try {
+    const listingId = req.params.id;
+    const customerLocation = {
+      ...req.query,
+      ...req.body,
+    };
+    const coverage = await evaluateLiveCoverage({
+      listingId,
+      customerLocation,
+    });
+    return successResponse(res, 200, 'Live coverage evaluated successfully', coverage);
   } catch (error) {
     next(error);
   }

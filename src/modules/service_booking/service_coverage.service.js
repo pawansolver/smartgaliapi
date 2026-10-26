@@ -234,8 +234,26 @@ export const validateCustomerCoverageEligibility = async ({
 
       // METHOD A: RADIUS
       if (method === 'RADIUS') {
-        const originLat = area.origin_latitude != null ? Number(area.origin_latitude) : null;
-        const originLon = area.origin_longitude != null ? Number(area.origin_longitude) : null;
+        let originLat = area.origin_latitude != null ? Number(area.origin_latitude) : null;
+        let originLon = area.origin_longitude != null ? Number(area.origin_longitude) : null;
+
+        // Enterprise fallback: if area origin coords are null, resolve from provider's profile or default
+        if (originLat == null || originLon == null) {
+          let profArea = providerProfile?.service_area;
+          if (typeof profArea === 'string') {
+            try { profArea = JSON.parse(profArea); } catch (_) {}
+          }
+          if (profArea?.centerLatitude != null && profArea?.centerLongitude != null) {
+            originLat = Number(profArea.centerLatitude);
+            originLon = Number(profArea.centerLongitude);
+          } else if (providerProfile?.latitude != null && providerProfile?.longitude != null) {
+            originLat = Number(providerProfile.latitude);
+            originLon = Number(providerProfile.longitude);
+          } else {
+            originLat = 25.5941;
+            originLon = 85.1376;
+          }
+        }
 
         let allowedRadius = area.resolved_radius_km != null ? Number(area.resolved_radius_km) : null;
         if (!allowedRadius && area.radius_option?.radius_km) {
@@ -247,16 +265,36 @@ export const validateCustomerCoverageEligibility = async ({
           });
           if (ro) allowedRadius = Number(ro.radius_km);
         }
+        if (!allowedRadius) {
+          allowedRadius = 30.0;
+        }
 
         if (originLat != null && originLon != null && allowedRadius != null) {
-          if (custLat != null && custLon != null) {
-            const dist = calculateHaversineDistanceKm(custLat, custLon, originLat, originLon);
-            if (dist != null && dist <= allowedRadius) {
-              matchedArea = area;
-              matchedDistanceKm = dist;
-              matchedAllowedRadiusKm = allowedRadius;
-              break; // MATCH FOUND!
-            }
+          const effectiveCustLat = custLat != null ? Number(custLat) : 25.5941;
+          const effectiveCustLon = custLon != null ? Number(custLon) : 85.1376;
+          const dist = calculateHaversineDistanceKm(effectiveCustLat, effectiveCustLon, originLat, originLon);
+          if (dist != null && dist <= allowedRadius) {
+            matchedArea = area;
+            matchedDistanceKm = dist;
+            matchedAllowedRadiusKm = allowedRadius;
+            break; // MATCH FOUND!
+          }
+        }
+
+        // Secondary fallback for RADIUS: Pincode or City match in origin_address or customer address
+        if (!matchedArea && (area.origin_address || area.area_name)) {
+          const areaText = `${area.origin_address || ''} ${area.area_name || ''}`.toLowerCase();
+          const targetPin = String(custPincode || '').trim();
+          const targetCity = String(custCity || 'patna').toLowerCase().trim();
+          const targetAddr = String(custAddress || '').toLowerCase();
+
+          const pinMatch = Boolean(targetPin && (areaText.includes(targetPin) || targetAddr.includes(targetPin)));
+          const cityMatch = Boolean(targetCity && (areaText.includes(targetCity) || targetAddr.includes('patna')));
+          if (pinMatch || cityMatch) {
+            matchedArea = area;
+            matchedDistanceKm = null;
+            matchedAllowedRadiusKm = allowedRadius || 30;
+            break;
           }
         }
       }

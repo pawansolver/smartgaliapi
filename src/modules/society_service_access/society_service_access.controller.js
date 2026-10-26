@@ -73,10 +73,12 @@ export class SocietyServiceAccessController {
   async approveAccess(req, res, next) {
     try {
       const reviewerUserId = req.user?.userId || req.user?.id;
+      const isSuperAdmin = req.user?.userRole === 'super_admin' || req.user?.role === 'super_admin' || req.user?.user_role === 'super_admin';
       const societyId = req.societyId || req.headers?.['x-society-id'];
       const result = await societyServiceAccessService.approveAccess({
         accessId: Number(req.params.id),
         reviewerUserId,
+        isSuperAdmin,
         societyId: societyId ? Number(societyId) : null,
         ipAddress: req.ip,
         userAgent: req.headers?.['user-agent'],

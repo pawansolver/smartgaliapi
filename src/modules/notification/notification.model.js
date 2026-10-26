@@ -34,7 +34,7 @@ const Notification = sequelize.define('Notification', {
     allowNull: false,
   },
   type: {
-    type: DataTypes.ENUM('info', 'alert', 'reminder', 'message', 'system', 'society_committee'),
+    type: DataTypes.STRING(64),
     defaultValue: 'info',
   },
   data: {

@@ -33,6 +33,10 @@ export const requireServiceConfigManage = async (req, res, next) => {
   return errorResponse(res, 403, "Forbidden: 'service_config.manage' permission required. Providers and Residents cannot manage masters.");
 };
 
+// ── Dynamic Booking Flow & Authoritative Pricing Governance (Super Admin Managed) ──
+router.get('/booking-governance', optionalAuthenticate, serviceConfigController.getBookingGovernance);
+router.put('/booking-governance', authenticate, requireServiceConfigManage, serviceConfigController.updateBookingGovernance);
+
 // ── Public / Provider Read APIs ─────────────────────────────────────────────
 router.get('/all', optionalAuthenticate, serviceConfigController.getAllMasters);
 router.get('/:masterType', optionalAuthenticate, serviceConfigController.getMasterCollection);

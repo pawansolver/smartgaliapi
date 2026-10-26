@@ -68,3 +68,25 @@ export const deleteMasterItem = async (req, res) => {
     return sendError(res, err.message, err.statusCode || 500);
   }
 };
+
+
+import * as serviceBookingGovernanceService from './service_booking_governance.service.js';
+
+export const getBookingGovernance = async (req, res) => {
+  try {
+    const data = await serviceBookingGovernanceService.getLiveBookingGovernance();
+    return sendSuccess(res, data, 'Booking and pricing governance retrieved successfully', 200);
+  } catch (err) {
+    return sendError(res, err.message, err.statusCode || 500);
+  }
+};
+
+export const updateBookingGovernance = async (req, res) => {
+  try {
+    const reqMeta = { ip: req.ip, ua: req.headers['user-agent'] };
+    const data = await serviceBookingGovernanceService.updateLiveBookingGovernance(req.body, req.user, reqMeta);
+    return sendSuccess(res, data, 'Booking and pricing governance updated successfully by administrator', 200);
+  } catch (err) {
+    return sendError(res, err.message, err.statusCode || 500);
+  }
+};

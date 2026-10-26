@@ -90,6 +90,7 @@ export const initSocket = (httpServer) => {
     if (!userSocketsMap.has(uid)) userSocketsMap.set(uid, new Set());
     userSocketsMap.get(uid).add(socket.id);
     socket.join(`user:${uid}`);
+    socket.join(`user_${uid}`);
 
     const presenceReady = markUserOnline(uid)
       .then((becameOnline) => {

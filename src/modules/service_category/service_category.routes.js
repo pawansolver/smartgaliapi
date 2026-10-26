@@ -56,6 +56,7 @@ router.delete('/kyc-document-types/:id', authenticate, requireCategoryManagement
 
 // ── Subcategory Requests APIs ───────────────────────────────────────────────
 router.post('/request-subcategory', authenticate, serviceCategoryController.requestSubcategory);
+router.get('/subcategory-requests/my', authenticate, serviceCategoryController.getMySubcategoryRequests);
 router.get('/subcategory-requests/all', authenticate, requireCategoryManagement, serviceCategoryController.listSubcategoryRequests);
 router.put('/subcategory-requests/:id/review', authenticate, requireCategoryManagement, serviceCategoryController.reviewSubcategoryRequest);
 
@@ -65,6 +66,8 @@ router.post('/:categoryId/kyc-requirements', authenticate, requireCategoryManage
 router.put('/:categoryId/kyc-requirements/:requirementId', authenticate, requireCategoryManagement, serviceCategoryController.updateCategoryRequirement);
 router.delete('/:categoryId/kyc-requirements/:requirementId', authenticate, requireCategoryManagement, serviceCategoryController.deleteCategoryRequirement);
 router.patch('/:categoryId/kyc-requirements/status', authenticate, requireCategoryManagement, serviceCategoryController.setCategoryKycConfigured);
+router.put('/:categoryId/kyc-configured', authenticate, requireCategoryManagement, serviceCategoryController.setCategoryKycConfigured);
+router.patch('/:categoryId/kyc-configured', authenticate, requireCategoryManagement, serviceCategoryController.setCategoryKycConfigured);
 
 router.get('/:id', optionalAuthenticate, serviceCategoryController.getCategoryById);
 

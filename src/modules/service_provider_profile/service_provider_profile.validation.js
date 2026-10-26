@@ -1,11 +1,46 @@
+export const updateNotificationPreferencesSchema = Joi.object({
+  notifBookings: Joi.boolean().optional(),
+  newBookingRequests: Joi.boolean().optional(),
+  notif_bookings: Joi.boolean().optional(),
+  notifStatusReminders: Joi.boolean().optional(),
+  jobReminders: Joi.boolean().optional(),
+  notif_status_reminders: Joi.boolean().optional(),
+  notifReviews: Joi.boolean().optional(),
+  customerReviews: Joi.boolean().optional(),
+  notif_reviews: Joi.boolean().optional(),
+  notifPayouts: Joi.boolean().optional(),
+  settlementsPayouts: Joi.boolean().optional(),
+  notif_payouts: Joi.boolean().optional(),
+}).min(1);
+
 ﻿import Joi from 'joi';
 
+export const updateOperationalPreferencesSchema = Joi.object({
+  auto_accept_bookings: Joi.boolean().optional(),
+  autoAcceptBookings: Joi.boolean().optional(),
+  priority_emergency_dispatch: Joi.boolean().optional(),
+  emergencyDispatch: Joi.boolean().optional(),
+  vacation_mode: Joi.boolean().optional(),
+  vacationMode: Joi.boolean().optional(),
+  notification_preferences: Joi.alternatives().try(Joi.object(), Joi.string()).optional(),
+  notificationPreferences: Joi.alternatives().try(Joi.object(), Joi.string()).optional(),
+}).min(1);
+
 export const updateProviderProfileSchema = Joi.object({
+  auto_accept_bookings: Joi.boolean().optional(),
+  autoAcceptBookings: Joi.boolean().optional(),
+  priority_emergency_dispatch: Joi.boolean().optional(),
+  emergencyDispatch: Joi.boolean().optional(),
+  vacation_mode: Joi.boolean().optional(),
+  vacationMode: Joi.boolean().optional(),
+  notification_preferences: Joi.alternatives().try(Joi.object(), Joi.string()).optional(),
+  notificationPreferences: Joi.alternatives().try(Joi.object(), Joi.string()).optional(),
   service_category_id: Joi.number().integer().positive().allow(null).optional(),
   business_name: Joi.string().trim().max(255).allow(null, '').optional(),
+  businessName: Joi.string().trim().max(255).allow(null, '').optional(),
   provider_type: Joi.string().valid('Independent Professional', 'Agency / Team').optional(),
   description: Joi.string().trim().max(2000).allow(null, '').optional(),
-  experience: Joi.string().trim().max(100).allow(null, '').optional(),
+  experience: Joi.alternatives().try(Joi.string().trim().max(100), Joi.number()).allow(null, '').optional(),
   hourly_rate: Joi.number().min(0).max(999999.99).allow(null).optional(),
   is_online: Joi.boolean().optional(),
   languages: Joi.array()
@@ -59,11 +94,16 @@ export const verifyProviderSchema = Joi.object({
 
 export const uploadProviderDocumentSchema = Joi.object({
   document_type: Joi.string().trim().max(50).optional(),
+  documentType: Joi.string().trim().max(50).optional(),
   document_type_id: Joi.number().integer().positive().optional(),
+  documentTypeId: Joi.number().integer().positive().optional(),
   title: Joi.string().trim().max(255).allow(null, '').optional(),
   document_number: Joi.string().trim().max(100).allow(null, '').optional(),
+  documentNumber: Joi.string().trim().max(100).allow(null, '').optional(),
   expiry_date: Joi.date().iso().allow(null).optional(),
+  expiryDate: Joi.date().iso().allow(null).optional(),
   issue_date: Joi.date().iso().allow(null).optional(),
+  issueDate: Joi.date().iso().allow(null).optional(),
 });
 
 export const verifyProviderDocumentSchema = Joi.object({

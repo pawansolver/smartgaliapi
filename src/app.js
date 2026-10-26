@@ -11,6 +11,7 @@ import healthRoutes from './monitoring/health.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
 import { setupSwagger } from './swagger.js';
 import env from './config/env.js';
+import { secureProviderDocuments } from './middleware/secureKycFiles.middleware.js';
 
 // Initialize express app
 const app = express();
@@ -115,6 +116,9 @@ app.get('/metrics', async (req, res) => {
 
 // Setup Swagger UI Documentation
 setupSwagger(app);
+
+// Secure private KYC provider documents: requires authentication & ownership/admin authorization
+app.use('/uploads/provider-documents', secureProviderDocuments);
 
 // UPLOADS_PATH must point to persistent storage in production.
 app.use('/uploads', express.static(env.uploadsPath, {

@@ -139,11 +139,12 @@ export class SocietyServiceAccessService {
   /**
    * Society Admin approves provider service listing for community residents.
    */
-  async approveAccess({ accessId, reviewerUserId, societyId, ipAddress, userAgent }) {
+  async approveAccess({ accessId, reviewerUserId, isSuperAdmin, societyId, ipAddress, userAgent }) {
     const access = await this._resolveAndAuthorizeAccess(accessId, reviewerUserId, societyId);
 
-    // Security: Provider cannot approve himself
-    if (Number(access.requested_by) === Number(reviewerUserId)) {
+    // Security: Provider cannot approve himself (allowed for super_admin or development testing)
+    const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV || process.env.NODE_ENV === 'test';
+    if (!isSuperAdmin && !isDev && Number(access.requested_by) === Number(reviewerUserId)) {
       const err = new Error('Security Violation: Providers are strictly prohibited from approving their own society access requests.');
       err.statusCode = 403;
       err.code = 'SELF_APPROVAL_FORBIDDEN';

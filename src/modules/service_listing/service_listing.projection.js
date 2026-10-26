@@ -43,6 +43,9 @@ export const toPublicServiceListing = (listing) => {
         localities: Array.isArray(sa.localities) ? sa.localities : [],
         pincodes: Array.isArray(sa.pincodes) ? sa.pincodes : [],
         radiusKm: Number(sa.radiusKm) || 10,
+        centerLatitude: sa.centerLatitude != null ? Number(sa.centerLatitude) : (sa.latitude != null ? Number(sa.latitude) : null),
+        centerLongitude: sa.centerLongitude != null ? Number(sa.centerLongitude) : (sa.longitude != null ? Number(sa.longitude) : null),
+        baseAddress: sa.base_address || sa.baseAddress || null,
       };
     }
   }
@@ -55,10 +58,17 @@ export const toPublicServiceListing = (listing) => {
           id: Number(a.id),
           coverage_scope: a.coverage_scope || 'PUBLIC',
           coverage_method: a.coverage_method || 'RADIUS',
+          city_id: a.city_id ? Number(a.city_id) : null,
           city_name: a.city?.name || null,
+          locality_id: a.locality_id ? Number(a.locality_id) : null,
           locality_name: a.locality?.name || null,
+          pincode_id: a.pincode_id ? Number(a.pincode_id) : null,
           pincode: a.pincode?.pincode || null,
+          society_id: a.society_id ? Number(a.society_id) : (a.society?.id ? Number(a.society.id) : null),
+          society_name: a.society?.societyName || a.society?.name || null,
           origin_address: a.origin_address || null,
+          origin_latitude: a.origin_latitude != null ? Number(a.origin_latitude) : null,
+          origin_longitude: a.origin_longitude != null ? Number(a.origin_longitude) : null,
           radius_km: a.resolved_radius_km != null ? Number(a.resolved_radius_km) : (a.radius_option?.radius_km ? Number(a.radius_option.radius_km) : null),
         }))
     : [];
@@ -113,6 +123,8 @@ export const toPublicServiceListing = (listing) => {
     rating: Number(raw.rating || 0.0),
     reviews_count: Number(raw.reviews_count || 0),
     bookings_count: Number(raw.bookings_count || 0),
+    distance: raw.distance || (raw.distance_km != null ? `${Number(raw.distance_km).toFixed(1)} km` : null),
+    distance_km: raw.distance_km != null ? Number(raw.distance_km) : null,
     provider: {
       id: Number(provider.id || raw.provider_id || 0),
       name: providerUser.userName || provider.business_name || 'Service Professional',
@@ -126,6 +138,8 @@ export const toPublicServiceListing = (listing) => {
       verification_status: provider.verification_status || 'underReview',
       is_online: provider.is_online !== undefined ? !!provider.is_online : true,
       service_area: publicServiceArea,
+      vacation_mode: !!provider.vacation_mode,
+      auto_accept_bookings: !!provider.auto_accept_bookings,
     },
     created_at: raw.created_at,
     updatedAt: raw.updatedAt,

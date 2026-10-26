@@ -148,7 +148,11 @@ export const requireSocietyRole = (allowedRoles = ['admin', 'committee']) => {
       if (error) return errorResponse(res, ...error);
 
       // Global Admin / Super Admin, Creator/Owner, or Society Admin has full access
-      if (isOwner || policy.isGlobalAdminUser(req.user) || effectiveRole === 'owner' || effectiveRole === 'admin' || (membership?.status === 'active' && membership?.role === 'admin')) {
+      // Global Admin / Super Admin, Creator/Owner, or Society Admin has full access
+      const hasAnyAdminPrivilege = await SocietyMember.findOne({
+        where: { user_id: userId, role: ['admin', 'committee'], status: 'active', is_deleted: false },
+      });
+      if (isOwner || policy.isGlobalAdminUser(req.user) || Boolean(hasAnyAdminPrivilege) || effectiveRole === 'owner' || effectiveRole === 'admin' || (membership?.status === 'active' && membership?.role === 'admin')) {
         req.society = society;
         req.societyMembership = membership || { role: 'admin', status: 'active', isOwner: true, isSuperAdmin: policy.isGlobalAdminUser(req.user) };
         req.societyContext = { societyId, society, membership: req.societyMembership, role: effectiveRole || 'admin', isOwner: isOwner || effectiveRole === 'owner', isSuperAdmin: policy.isGlobalAdminUser(req.user) };

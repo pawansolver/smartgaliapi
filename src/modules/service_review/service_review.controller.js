@@ -1,6 +1,22 @@
 import { successResponse, errorResponse } from '../../utils/response.js';
 import * as serviceReviewService from './service_review.service.js';
 
+export const uploadReviewPhoto = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return errorResponse(res, 400, 'No photo uploaded. Please select an image file.');
+    }
+    const relativeUrl = `/uploads/reviews/${req.file.filename}`;
+    return successResponse(res, 201, 'Review photo uploaded successfully', {
+      url: relativeUrl,
+      filename: req.file.filename,
+      size: req.file.size,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createReview = async (req, res, next) => {
   try {
     const review = await serviceReviewService.createReview(req.body, req.user);
@@ -15,8 +31,14 @@ export const createReview = async (req, res, next) => {
 
 export const getAllReviews = async (req, res, next) => {
   try {
-    const reviews = await serviceReviewService.getAllReviews(req.query);
-    return successResponse(res, 200, 'Service reviews fetched successfully', reviews);
+    const result = await serviceReviewService.getAllReviews(req.query);
+    const rows = result.rows || result;
+    return successResponse(res, 200, 'Service reviews fetched successfully', rows, {
+      total: result.count !== undefined ? result.count : rows.length,
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 50,
+      rows: rows,
+    });
   } catch (error) {
     next(error);
   }

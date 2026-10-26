@@ -772,6 +772,21 @@ export const getListingById = async (id) => {
   return listing;
 };
 
+// Local Haversine helper for high-precision real-time location matching
+const calculateHaversineDistanceKm = (lat1, lon1, lat2, lon2) => {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
+  const toRad = (v) => (Number(v) * Math.PI) / 180;
+  const R = 6371; // Earth radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  return Math.round(distance * 100) / 100;
+};
+
 export const getAllListings = async (query = {}) => {
   const {
     category_id,
@@ -787,9 +802,19 @@ export const getAllListings = async (query = {}) => {
     search,
     min_price,
     max_price,
+    lat,
+    lng,
+    latitude,
+    longitude,
+    radius,
+    radius_km,
     page = 1,
     limit = 20,
   } = query;
+
+  const custLat = lat != null ? Number(lat) : (latitude != null ? Number(latitude) : null);
+  const custLng = lng != null ? Number(lng) : (longitude != null ? Number(longitude) : null);
+  const searchRadius = radius != null ? Number(radius) : (radius_km != null ? Number(radius_km) : null);
 
   const where = {
     is_deleted: false,
@@ -815,47 +840,146 @@ export const getAllListings = async (query = {}) => {
     ];
   }
 
-  const offset = (page - 1) * limit;
-
-  const { count, rows } = await ServiceListing.findAndCountAll({
+  // Fetch candidate approved listings with provider and coverage areas
+  const rows = await ServiceListing.findAll({
     where,
-    limit: parseInt(limit, 10),
-    offset: parseInt(offset, 10),
     order: [['id', 'DESC']],
     include: [
       {
         model: ServiceProviderProfile,
         as: 'provider',
-        include: [{ model: User, as: 'user', attributes: ['userId', 'userName', 'phone'] }]
+        where: { is_deleted: false },
+        include: [{ model: User, as: 'user', attributes: ['userId', 'userName', 'phone'] }],
       },
       ...listingMasterIncludes,
     ],
-    distinct: true,
   });
 
-  let filteredRows = rows;
-  if (locality) {
-    const locLower = locality.toLowerCase().trim();
-    filteredRows = rows.filter((r) => {
-      // 1. check provider profile service_area
-      let sa = r.provider?.service_area;
-      if (typeof sa === 'string') {
-        try { sa = JSON.parse(sa); } catch (_) { sa = null; }
+  // Enterprise Location, Availability, and Operational Filtering
+  const filteredRows = [];
+
+  for (const rawListing of rows) {
+    const r = rawListing.toJSON ? rawListing.toJSON() : { ...rawListing };
+    const provider = r.provider || {};
+
+    // 1. Exclude providers currently on Vacation Mode
+    if (provider.vacation_mode === true) {
+      continue;
+    }
+
+    // 2. Parse provider's service area
+    let sa = provider.service_area;
+    if (typeof sa === 'string') {
+      try { sa = JSON.parse(sa); } catch (_) { sa = null; }
+    }
+
+    // 3. City filter if specified
+    if (city && typeof city === 'string' && city.trim().length > 0) {
+      const targetCity = city.trim().toLowerCase();
+      const provCity = (sa?.city || '').trim().toLowerCase();
+      if (provCity && !provCity.includes(targetCity) && !targetCity.includes(provCity)) {
+        continue;
       }
+    }
+
+    // 4. Locality filter if specified and no GPS coords
+    if (locality && custLat == null) {
+      const locLower = locality.toLowerCase().trim();
+      let localityMatched = false;
       if (sa && Array.isArray(sa.localities)) {
-        if (sa.localities.some(l => l.toLowerCase().includes(locLower))) return true;
-      }
-      // 2. check coverage_areas
-      if (Array.isArray(r.coverage_areas)) {
-        if (r.coverage_areas.some(ca => ca.locality?.name?.toLowerCase().includes(locLower) || ca.origin_address?.toLowerCase().includes(locLower))) {
-          return true;
+        if (sa.localities.some(l => l.toLowerCase().includes(locLower) || locLower.includes(l.toLowerCase()))) {
+          localityMatched = true;
         }
       }
-      return false;
+      if (!localityMatched && Array.isArray(r.coverage_areas)) {
+        if (r.coverage_areas.some(ca => (ca.locality?.name || ca.origin_address || '').toLowerCase().includes(locLower))) {
+          localityMatched = true;
+        }
+      }
+      if (!localityMatched) {
+        continue;
+      }
+    }
+
+    // 5. Pincode filter if specified
+    if (pincode && typeof pincode === 'string' && pincode.trim().length > 0) {
+      const targetPin = pincode.trim();
+      let pinMatched = false;
+      if (sa && Array.isArray(sa.pincodes)) {
+        if (sa.pincodes.some(p => String(p).trim() === targetPin)) {
+          pinMatched = true;
+        }
+      }
+      if (!pinMatched && Array.isArray(r.coverage_areas)) {
+        if (r.coverage_areas.some(ca => String(ca.pincode?.pincode || '').trim() === targetPin)) {
+          pinMatched = true;
+        }
+      }
+      if (!pinMatched) {
+        continue;
+      }
+    }
+
+    // 6. Real-time GPS Location & Distance Calculation (Haversine)
+    let matchedDistanceKm = null;
+    let isWithinPerimeter = true;
+
+    if (custLat != null && custLng != null) {
+      const provLat = sa?.centerLatitude != null ? Number(sa.centerLatitude) : null;
+      const provLng = sa?.centerLongitude != null ? Number(sa.centerLongitude) : null;
+      const allowedRadius = sa?.radiusKm != null ? Number(sa.radiusKm) : 25;
+
+      if (provLat != null && provLng != null) {
+        matchedDistanceKm = calculateHaversineDistanceKm(custLat, custLng, provLat, provLng);
+      }
+
+      // Check child coverage_areas if available
+      if (Array.isArray(r.coverage_areas) && r.coverage_areas.length > 0) {
+        for (const ca of r.coverage_areas) {
+          if (ca.origin_latitude != null && ca.origin_longitude != null) {
+            const caDist = calculateHaversineDistanceKm(custLat, custLng, Number(ca.origin_latitude), Number(ca.origin_longitude));
+            if (caDist != null && (matchedDistanceKm == null || caDist < matchedDistanceKm)) {
+              matchedDistanceKm = caDist;
+            }
+          }
+        }
+      }
+
+      // Proximity perimeter boundary check
+      const effectiveMaxRadius = searchRadius != null ? searchRadius : (allowedRadius || 30);
+      if (matchedDistanceKm != null) {
+        if (matchedDistanceKm > effectiveMaxRadius) {
+          isWithinPerimeter = false;
+        }
+      } else {
+        // If customer provided GPS coordinates, services with no coordinates cannot satisfy a radial proximity search
+        isWithinPerimeter = false;
+      }
+    }
+
+    if (!isWithinPerimeter) {
+      continue;
+    }
+
+    // Attach calculated distance for customer projection
+    if (matchedDistanceKm != null) {
+      r.distance_km = matchedDistanceKm;
+      r.distance = `${matchedDistanceKm.toFixed(1)} km`;
+    }
+
+    filteredRows.push(r);
+  }
+
+  // 7. Sort by proximity (closest providers first) if GPS coords provided
+  if (custLat != null && custLng != null) {
+    filteredRows.sort((a, b) => {
+      const distA = a.distance_km != null ? a.distance_km : 999999;
+      const distB = b.distance_km != null ? b.distance_km : 999999;
+      return distA - distB;
     });
   }
 
-  // Phase 9: Resident Society Service Discovery Enrichment
+  // 8. Phase 9: Resident Society Service Discovery Enrichment
   if (query.society_id) {
     const socId = Number(query.society_id);
     const serviceIds = filteredRows.map(r => r.id);
@@ -869,25 +993,29 @@ export const getAllListings = async (query = {}) => {
     });
     const accessMap = new Map(accesses.map(a => [Number(a.service_id), a.status]));
 
-    filteredRows = filteredRows.map(r => {
+    filteredRows.forEach(r => {
       const accessStatus = accessMap.get(Number(r.id)) || 'NONE';
       const isApproved = accessStatus === 'APPROVED';
-      const rowJson = r.toJSON ? r.toJSON() : { ...r };
-      rowJson.society_access_status = accessStatus;
-      rowJson.is_society_approved = isApproved;
-      rowJson.is_bookable_for_society = isApproved;
-      return rowJson;
+      r.society_access_status = accessStatus;
+      r.is_society_approved = isApproved;
+      r.is_bookable_for_society = isApproved;
     });
   }
 
+  // 9. Pagination
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+  const safeLimit = Math.max(1, parseInt(limit, 10) || 20);
+  const totalCount = filteredRows.length;
+  const paginatedRows = filteredRows.slice((safePage - 1) * safeLimit, safePage * safeLimit);
+
   return {
-    total: filteredRows.length,
-    count: filteredRows.length,
-    rows: filteredRows,
-    data: filteredRows,
-    page: parseInt(page, 10),
-    limit: parseInt(limit, 10),
-    totalPages: Math.ceil(filteredRows.length / limit),
+    total: totalCount,
+    count: totalCount,
+    rows: paginatedRows,
+    data: paginatedRows,
+    page: safePage,
+    limit: safeLimit,
+    totalPages: Math.ceil(totalCount / safeLimit) || 1,
   };
 };
 
@@ -1476,3 +1604,6 @@ export const adminToggleListingStatus = async (id, isAvailable, actorId) => {
   });
   return await getListingById(id);
 };
+
+
+export { calculateAuthoritativeServicePrice } from "./service_pricing.service.js";

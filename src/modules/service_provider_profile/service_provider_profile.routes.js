@@ -4,6 +4,8 @@ import { authenticate, optionalAuthenticate, requireGlobalAdmin } from '../../mi
 import { validateBody } from '../../middleware/validation.middleware.js';
 import { uploadProviderDocument } from '../../utils/fileUpload.js';
 import {
+  updateOperationalPreferencesSchema,
+  updateNotificationPreferencesSchema,
   updateProviderProfileSchema,
   updateServiceAreaSchema,
   updateAvailabilitySchema,
@@ -59,6 +61,12 @@ router.put('/me/service-area', authenticate, validateBody(updateServiceAreaSchem
 router.get('/me/availability', authenticate, serviceProviderProfileController.getMyAvailability);
 router.put('/me/availability', authenticate, validateBody(updateAvailabilitySchema), serviceProviderProfileController.updateMyAvailability);
 
+router.get('/me/notification-preferences', authenticate, serviceProviderProfileController.getMyNotificationPreferences);
+router.put('/me/notification-preferences', authenticate, validateBody(updateNotificationPreferencesSchema), serviceProviderProfileController.updateMyNotificationPreferences);
+
+router.get('/me/operational-preferences', authenticate, serviceProviderProfileController.getMyOperationalPreferences);
+router.put('/me/operational-preferences', authenticate, validateBody(updateOperationalPreferencesSchema), serviceProviderProfileController.updateMyOperationalPreferences);
+
 router.get('/me/overview-stats', authenticate, serviceProviderProfileController.getMyOverviewStats);
 router.get('/me/earnings', authenticate, serviceProviderProfileController.getMyEarnings);
 
@@ -68,6 +76,7 @@ router.get('/me/required-documents', authenticate, serviceProviderProfileControl
 router.get('/me/documents', authenticate, serviceProviderProfileController.getMyDocuments);
 router.post('/me/documents', authenticate, extractUploadedDoc, validateBody(uploadProviderDocumentSchema), serviceProviderProfileController.uploadMyDocument);
 router.delete('/me/documents/:documentId', authenticate, serviceProviderProfileController.deleteMyDocument);
+router.get('/documents/:documentId/file', authenticate, serviceProviderProfileController.getProviderDocumentFile);
 
 // â”€â”€ Admin Moderation & Verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

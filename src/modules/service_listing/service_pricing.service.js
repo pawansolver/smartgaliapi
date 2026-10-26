@@ -1,3 +1,4 @@
+import { getLiveBookingGovernance } from '../service_config/service_booking_governance.service.js';
 import ServiceListing from './service_listing.model.js';
 import { ServicePackage, ServiceAddon } from '../service_config/service_config.models.js';
 
@@ -26,13 +27,19 @@ export const calculateAuthoritativeServicePrice = async ({
   packageId = null,
   addonIds = [],
   durationHours = 1,
-  materialCharge = 0.00,
-  platformFee = 29.00, // Flat platform fee (e.g. ₹29)
-  taxRate = 0.05,      // 5% GST
+  materialCharge = null,
+  platformFee = null,
+  taxRate = null,
   discountAmount = 0.00,
-  platformCommissionRate = 0.10, // 10% platform commission
+  platformCommissionRate = null,
   applicableDeductions = 0.00,
 }) => {
+  // Dynamically resolve Super Admin governed pricing defaults from DB
+  const liveGovernance = await getLiveBookingGovernance();
+  const effectivePlatformFee = (platformFee != null && !isNaN(platformFee)) ? Number(platformFee) : liveGovernance.platform_fee;
+  const effectiveTaxRate = (taxRate != null && !isNaN(taxRate)) ? Number(taxRate) : (liveGovernance.tax_rate_percent / 100);
+  const effectiveMaterialCharge = (materialCharge != null && !isNaN(materialCharge)) ? Number(materialCharge) : liveGovernance.default_material_charge;
+  const effectiveCommissionRate = (platformCommissionRate != null && !isNaN(platformCommissionRate)) ? Number(platformCommissionRate) : (liveGovernance.platform_commission_percent / 100);
   const listing = await ServiceListing.findOne({
     where: { id: listingId, is_deleted: false },
     include: [
@@ -114,16 +121,16 @@ export const calculateAuthoritativeServicePrice = async ({
   }
 
   // 4. Material / Parts Charges
-  const resolvedMaterialCharge = roundMoney(Math.max(0, Number(materialCharge) || 0.00));
+  const resolvedMaterialCharge = roundMoney(Math.max(0, effectiveMaterialCharge));
 
   // If package selected, package price is effective service price
   const effectiveBaseOrPackage = resolvedPackage ? packageAmount : baseAmount;
   const subtotal = roundMoney(effectiveBaseOrPackage + addonsAmount + resolvedMaterialCharge);
 
   // 5. Governance & Financial Ledger Adjustments
-  const resolvedPlatformFee = roundMoney(Math.max(0, Number(platformFee) || 0.00));
+  const resolvedPlatformFee = roundMoney(Math.max(0, effectivePlatformFee));
   const rawTaxable = roundMoney(subtotal + resolvedPlatformFee);
-  const taxAmount = roundMoney(rawTaxable * Number(taxRate));
+  const taxAmount = roundMoney(rawTaxable * effectiveTaxRate);
   
   // Clamped Discount
   const rawDiscount = roundMoney(Math.max(0, Number(discountAmount) || 0.00));
@@ -133,7 +140,7 @@ export const calculateAuthoritativeServicePrice = async ({
   const customerPayable = roundMoney(subtotal + resolvedPlatformFee + taxAmount - effectiveDiscount);
 
   // 6. Provider Earnings Breakdown
-  const platformCommission = roundMoney(subtotal * Number(platformCommissionRate));
+  const platformCommission = roundMoney(subtotal * effectiveCommissionRate);
   const resolvedDeductions = roundMoney(Math.max(0, Number(applicableDeductions) || 0.00));
   const providerEarnings = roundMoney(Math.max(0, subtotal - platformCommission - resolvedDeductions));
 
@@ -148,7 +155,7 @@ export const calculateAuthoritativeServicePrice = async ({
     effective_service_amount: effectiveBaseOrPackage,
     subtotal,
     platform_fee: resolvedPlatformFee,
-    tax_rate_percent: roundMoney(taxRate * 100),
+    tax_rate_percent: roundMoney(effectiveTaxRate * 100),
     tax_amount: taxAmount,
     discount_amount: effectiveDiscount,
     customer_payable: customerPayable,

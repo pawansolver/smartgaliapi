@@ -298,3 +298,16 @@ export const reviewSubcategoryRequest = async (req, res, next) => {
     next(error);
   }
 };
+
+export const getMySubcategoryRequests = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    if (!userId) {
+      return errorResponse(res, 401, 'Authentication required');
+    }
+    const requests = await kycReqService.listSubcategoryRequests({ userId });
+    return successResponse(res, 200, 'Your subcategory requests fetched successfully', requests);
+  } catch (error) {
+    next(error);
+  }
+};

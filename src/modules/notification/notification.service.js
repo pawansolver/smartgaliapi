@@ -2,6 +2,7 @@
 import User from '../user/user.model.js';
 import UserProfile from '../userProfile/userProfile.model.js';
 import NotificationPreference from '../profile/notification_preference.model.js';
+import ServiceProviderProfile from '../service_provider_profile/service_provider_profile.model.js';
 // ── FCM push (non-blocking helper used by emitNotification) ──────────────────
 import { sendToUser } from '../../infrastructure/notifications/push.service.js';
 import { logger } from '../../utils/logger.js';
@@ -50,14 +51,143 @@ const preferenceForNotification = (notificationData) => {
   return null;
 };
 
-export const createNotification = async (notificationData) => {
-  const preference = preferenceForNotification(notificationData);
-  if (preference && notificationData.user_id) {
-    const row = await NotificationPreference.findOne({
-      where: { user_id: notificationData.user_id, is_deleted: false },
-      attributes: [preference],
+
+/**
+ * Authoritative provider notification preference checker.
+ * Maps notification types and preferenceKeys to provider notification preferences:
+ * - notifBookings: New Booking Requests
+ * - notifStatusReminders: Job Reminders & Status Alerts
+ * - notifReviews: Customer Reviews & Feedback
+ * - notifPayouts: Settlements & Payout Updates
+ */
+export const isProviderNotificationAllowed = async (userId, notificationData) => {
+  if (!userId) return true;
+  try {
+    const profile = await ServiceProviderProfile.findOne({
+      where: { user_id: userId, is_deleted: false },
+      attributes: ['notification_preferences'],
     });
-    if (row && row[preference] === false) return null;
+    if (!profile) return true; // Recipient is not a service provider, do not suppress
+
+    const rawPrefs = profile.notification_preferences;
+    let prefs = {};
+    if (typeof rawPrefs === 'string') {
+      try { prefs = JSON.parse(rawPrefs); } catch (_) {}
+    } else if (rawPrefs && typeof rawPrefs === 'object') {
+      prefs = rawPrefs;
+    }
+
+    const type = (notificationData.type || '').toLowerCase();
+    const explicitKey = notificationData.data?.preferenceKey || notificationData.preferenceKey;
+    const target = notificationData.data?.target;
+    const isProvider = notificationData.data?.isProvider;
+
+    // 1. New Booking Requests
+    const isBookingRequest =
+      explicitKey === 'booking_requests' ||
+      explicitKey === 'new_booking_requests' ||
+      type === 'booking_request' ||
+      type === 'new_booking' ||
+      (type === 'service_booking' && target === 'booking' && isProvider !== false);
+
+    if (isBookingRequest) {
+      const allowed = prefs.notifBookings !== undefined
+        ? Boolean(prefs.notifBookings)
+        : (prefs.newBookingRequests !== undefined ? Boolean(prefs.newBookingRequests) : true);
+      if (!allowed) {
+        logger.info('emitNotification: suppressed by provider notifBookings preference', { userId, type });
+        return false;
+      }
+    }
+
+    // 2. Job Reminders & Status Alerts
+    const isStatusOrReminder =
+      explicitKey === 'job_reminders' ||
+      explicitKey === 'booking_status' ||
+      explicitKey === 'status_alerts' ||
+      type === 'job_reminder' ||
+      type === 'booking_reminder' ||
+      type === 'booking_status' ||
+      type === 'booking_cancelled' ||
+      type === 'booking_confirmed' ||
+      type === 'booking_in_progress' ||
+      type === 'booking_completed' ||
+      (type.startsWith('booking_') && type !== 'booking_request');
+
+    if (isStatusOrReminder) {
+      const allowed = prefs.notifStatusReminders !== undefined
+        ? Boolean(prefs.notifStatusReminders)
+        : (prefs.jobReminders !== undefined ? Boolean(prefs.jobReminders) : true);
+      if (!allowed) {
+        logger.info('emitNotification: suppressed by provider notifStatusReminders preference', { userId, type });
+        return false;
+      }
+    }
+
+    // 3. Customer Reviews & Feedback
+    const isReview =
+      explicitKey === 'customer_reviews' ||
+      explicitKey === 'service_reviews' ||
+      type === 'service_review' ||
+      type === 'customer_review' ||
+      type === 'review_received' ||
+      type === 'rating_received' ||
+      target === 'review';
+
+    if (isReview) {
+      const allowed = prefs.notifReviews !== undefined
+        ? Boolean(prefs.notifReviews)
+        : (prefs.customerReviews !== undefined ? Boolean(prefs.customerReviews) : true);
+      if (!allowed) {
+        logger.info('emitNotification: suppressed by provider notifReviews preference', { userId, type });
+        return false;
+      }
+    }
+
+    // 4. Settlements & Payout Updates
+    const isPayout =
+      explicitKey === 'settlements_payouts' ||
+      explicitKey === 'payout_updates' ||
+      explicitKey === 'payouts' ||
+      type === 'payout' ||
+      type === 'settlement' ||
+      type === 'payout_processed' ||
+      type === 'earnings_settled' ||
+      type === 'payout_update' ||
+      target === 'payout';
+
+    if (isPayout) {
+      const allowed = prefs.notifPayouts !== undefined
+        ? Boolean(prefs.notifPayouts)
+        : (prefs.settlementsPayouts !== undefined ? Boolean(prefs.settlementsPayouts) : true);
+      if (!allowed) {
+        logger.info('emitNotification: suppressed by provider notifPayouts preference', { userId, type });
+        return false;
+      }
+    }
+
+    return true;
+  } catch (err) {
+    logger.error('isProviderNotificationAllowed error', { userId, error: err.message });
+    return true;
+  }
+};
+
+export const createNotification = async (notificationData) => {
+  if (notificationData.user_id) {
+    // 1. Authoritative check for Service Provider notification preferences
+    const allowedForProvider = await isProviderNotificationAllowed(notificationData.user_id, notificationData);
+    if (!allowedForProvider) return null;
+
+    // 2. Standard Resident / Society notification preference check
+    const preference = preferenceForNotification(notificationData);
+    if (preference) {
+      const row = await NotificationPreference.findOne({
+        where: { user_id: notificationData.user_id, is_deleted: false },
+        attributes: [preference],
+      });
+      if (row && row[preference] === false) return null;
+    }
   }
   return await Notification.create(notificationData);
 };
@@ -232,6 +362,19 @@ export const emitNotification = async (firstArg, secondArg) => {
         ...(preferenceKey ? { preferenceKey } : {}),
       },
     });
+
+    // Real-time socket emission to recipient's room
+    try {
+      const { getIO } = await import('../../socket.js');
+      const io = getIO();
+      if (io && notification) {
+        const serialized = serializeNotification(notification);
+        io.to(`user:${targetUserId}`).emit('notification:new', serialized);
+        io.to(`user_${targetUserId}`).emit('notification:new', serialized);
+        io.to(`user:${targetUserId}`).emit('notification', serialized);
+        io.to(`user_${targetUserId}`).emit('notification', serialized);
+      }
+    } catch (_) {}
 
     // FCM push: fire-and-forget after DB write succeeds
     if (sendPush && notification) {
