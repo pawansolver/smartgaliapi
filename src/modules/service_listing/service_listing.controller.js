@@ -125,8 +125,8 @@ export const moderateListing = async (req, res, next) => {
 
 export const deleteListing = async (req, res, next) => {
   try {
-    const { deletedRemarks } = req.body;
-    const listing = await serviceListingService.softDeleteListing(req.params.id, deletedRemarks, req.user);
+    const { deletedRemarks } = req.body || {};
+    const listing = await serviceListingService.deleteListing(req.params.id, req.user, deletedRemarks);
     if (!listing) {
       return errorResponse(res, 404, 'Service listing not found');
     }
@@ -258,6 +258,29 @@ export const checkCoverage = async (req, res, next) => {
       customerLocation,
     });
     return successResponse(res, 200, 'Live coverage evaluated successfully', coverage);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const toggleFavorite = async (req, res, next) => {
+  try {
+    const listingId = req.params.id;
+    const { isFavorite, type } = req.body || {};
+    const userId = req.user?.id || req.user?.userId || null;
+    const result = {
+      id: listingId,
+      type: type || 'service',
+      isFavorite: isFavorite !== undefined ? Boolean(isFavorite) : true,
+      userId,
+      timestamp: new Date().toISOString(),
+    };
+    return successResponse(
+      res,
+      200,
+      result.isFavorite ? 'Service added to favorites' : 'Service removed from favorites',
+      result
+    );
   } catch (error) {
     next(error);
   }

@@ -245,8 +245,8 @@ export const getAvailableSlotsForDate = async (listingId, targetDateStr) => {
   }
 
   const durationConfig = await resolveServiceDurationConfig(listing);
-  const slotStepMinutes = durationConfig.totalOccupancyMinutes > 0 ? durationConfig.totalOccupancyMinutes : 60;
-  const capacity = durationConfig.capacity || 1;
+  let slotStepMinutes = durationConfig.totalOccupancyMinutes > 0 ? durationConfig.totalOccupancyMinutes : 60;
+  let capacity = durationConfig.capacity || 1;
 
   const targetDate = new Date(targetDateStr);
   if (isNaN(targetDate.getTime())) {
@@ -255,18 +255,131 @@ export const getAvailableSlotsForDate = async (listingId, targetDateStr) => {
     throw err;
   }
 
-  const workStartHour = 9;
-  const workEndHour = 19;
-
-  const startOfDay = new Date(targetDate);
-  startOfDay.setHours(workStartHour, 0, 0, 0);
-
-  const endOfDay = new Date(targetDate);
-  endOfDay.setHours(workEndHour, 0, 0, 0);
-
   const providerId = listing.provider_id;
   const ServiceBooking = (await import('./service_booking.model.js')).default;
+  const ServiceProviderProfile = (await import('../service_provider_profile/service_provider_profile.model.js')).default;
   const { Op } = await import('sequelize');
+
+  // Fetch provider profile for operational preferences & schedule
+  let providerProfile = null;
+  if (providerId) {
+    providerProfile = await ServiceProviderProfile.findOne({
+      where: {
+        [Op.or]: [{ id: providerId }, { user_id: providerId }],
+        is_deleted: false,
+      },
+    });
+  }
+
+  // 1. Check Vacation Mode
+  if (providerProfile && (providerProfile.vacation_mode === true || providerProfile.vacation_mode === 1)) {
+    return {
+      date: targetDateStr,
+      durationMinutes: durationConfig.durationMinutes,
+      bufferMinutes: durationConfig.bufferMinutes,
+      totalOccupancyMinutes: durationConfig.totalOccupancyMinutes,
+      capacity,
+      isListingAvailable: false,
+      reason: 'PROVIDER_ON_VACATION',
+      slots: [],
+    };
+  }
+
+  // 2. Check Online Status
+  if (providerProfile && providerProfile.is_online === false) {
+    return {
+      date: targetDateStr,
+      durationMinutes: durationConfig.durationMinutes,
+      bufferMinutes: durationConfig.bufferMinutes,
+      totalOccupancyMinutes: durationConfig.totalOccupancyMinutes,
+      capacity,
+      isListingAvailable: false,
+      reason: 'PROVIDER_OFFLINE',
+      slots: [],
+    };
+  }
+
+  // 3. Resolve Working Hours from Provider Weekly Schedule
+  let workStartHour = 9;
+  let workStartMinute = 0;
+  let workEndHour = 19;
+  let workEndMinute = 0;
+  let isWorkingDay = true;
+
+  if (providerProfile?.availability) {
+    try {
+      const avail = typeof providerProfile.availability === 'string'
+        ? JSON.parse(providerProfile.availability)
+        : providerProfile.availability;
+
+      if (avail) {
+        // Exceptions / Holiday off-days
+        if (Array.isArray(avail.exceptions)) {
+          const isException = avail.exceptions.some(e => {
+            const expDate = typeof e === 'string' ? e : e?.date;
+            return expDate === targetDateStr;
+          });
+          if (isException) isWorkingDay = false;
+        }
+
+        // Weekly schedule check
+        if (Array.isArray(avail.weeklySchedule)) {
+          const jsDay = targetDate.getDay(); // 0 = Sunday, 1 = Monday ... 6 = Saturday
+          const scheduleWeekday = jsDay === 0 ? 7 : jsDay;
+          const daySched = avail.weeklySchedule.find(s => s.weekday === scheduleWeekday);
+          if (daySched) {
+            if (daySched.isWorking === false) {
+              isWorkingDay = false;
+            } else {
+              if (daySched.startTime) {
+                const [sh, sm] = daySched.startTime.split(':').map(Number);
+                if (!isNaN(sh)) {
+                  workStartHour = sh;
+                  workStartMinute = sm || 0;
+                }
+              }
+              if (daySched.endTime) {
+                const [eh, em] = daySched.endTime.split(':').map(Number);
+                if (!isNaN(eh)) {
+                  workEndHour = eh;
+                  workEndMinute = em || 0;
+                }
+              }
+            }
+          }
+        }
+
+        // Provider slot duration preference override if listing doesn't specify custom duration
+        if (!listing.duration_option_id && avail.slotDurationMinutes && avail.slotDurationMinutes > 0) {
+          slotStepMinutes = Number(avail.slotDurationMinutes) + (durationConfig.bufferMinutes || 0);
+        }
+        if (!listing.booking_capacity_id && avail.maxConcurrentBookings && avail.maxConcurrentBookings > 0) {
+          capacity = Number(avail.maxConcurrentBookings);
+        }
+      }
+    } catch (parseErr) {
+      console.warn('Failed to parse provider availability JSON:', parseErr.message);
+    }
+  }
+
+  if (!isWorkingDay) {
+    return {
+      date: targetDateStr,
+      durationMinutes: durationConfig.durationMinutes,
+      bufferMinutes: durationConfig.bufferMinutes,
+      totalOccupancyMinutes: durationConfig.totalOccupancyMinutes,
+      capacity,
+      isListingAvailable: false,
+      reason: 'PROVIDER_OFF_DUTY',
+      slots: [],
+    };
+  }
+
+  const startOfDay = new Date(targetDate);
+  startOfDay.setHours(workStartHour, workStartMinute, 0, 0);
+
+  const endOfDay = new Date(targetDate);
+  endOfDay.setHours(workEndHour, workEndMinute, 0, 0);
 
   const dayStart = new Date(targetDate);
   dayStart.setHours(0, 0, 0, 0);

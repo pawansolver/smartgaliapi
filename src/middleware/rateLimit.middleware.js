@@ -164,18 +164,27 @@ export const makeRateLimiter = ({
   message,
   identityFields = [],
 }) => {
+  if (process.env.RATE_LIMIT_ENABLED === 'false' || !rateLimitConfig.enabled) {
+    return (req, res, next) => next();
+  }
+  if (process.env.NODE_ENV === 'development') {
+    windowMs = 5000;
+    max = 2000;
+    emergencyMax = 2000;
+  }
   const p = name || prefix || 'gen';
 
   return rateLimit({
     windowMs: windowMs || 60000,
     max: () => {
-      const getClient = rateLimitDeps.getRedisClient || rateLimitDeps.getStoreClient;
-      const client = getClient ? getClient() : null;
+      const isAvailable = typeof rateLimitDeps.isRedisAvailable === 'function'
+        ? rateLimitDeps.isRedisAvailable()
+        : false;
       return resolveEffectiveMax({
         category,
         max: max || 100,
         emergencyMax,
-        redisAvailable: Boolean(client),
+        redisAvailable: isAvailable,
       });
     },
     standardHeaders: true,

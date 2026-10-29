@@ -73,6 +73,7 @@ router.get('/', optionalAuthenticate, validateQuery(queryListingsSchema), servic
 router.get('/:id', optionalAuthenticate, serviceListingController.getListingById);
 router.post('/:id/calculate-price', optionalAuthenticate, serviceListingController.calculatePrice);
 router.all('/:id/check-coverage', optionalAuthenticate, serviceListingController.checkCoverage);
+router.post('/:id/favorite', optionalAuthenticate, serviceListingController.toggleFavorite);
 
 // ── Step 5: Enterprise Media & KYC Routes ────────────────────────────────────
 

@@ -127,8 +127,8 @@ export const rateLimitConfig = {
   },
   authSignin: {
     windowMs: toInt(process.env.RATE_LIMIT_AUTH_SIGNIN_WINDOW_MS, 900_000),
-    max: toInt(process.env.RATE_LIMIT_AUTH_SIGNIN_MAX, 10),
-    emergencyMax: toInt(process.env.RATE_LIMIT_AUTH_SIGNIN_EMERGENCY_MAX, 3),
+    max: toInt(process.env.RATE_LIMIT_AUTH_SIGNIN_MAX, process.env.NODE_ENV === 'development' ? 5000 : 10),
+    emergencyMax: toInt(process.env.RATE_LIMIT_AUTH_SIGNIN_EMERGENCY_MAX, process.env.NODE_ENV === 'development' ? 5000 : 3),
   },
   authReset: {
     windowMs: toInt(process.env.RATE_LIMIT_AUTH_RESET_WINDOW_MS, 900_000),

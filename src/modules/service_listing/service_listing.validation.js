@@ -141,6 +141,9 @@ export const queryListingsSchema = Joi.object({
   society_id: Joi.number().integer().positive().optional(),
   min_price: Joi.number().min(0).optional(),
   max_price: Joi.number().min(0).optional(),
+  sort_by: Joi.string().valid('recommended', 'distance', 'rating', 'price_asc', 'price_desc', 'newest').allow(null, '').optional(),
+  verified_only: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
+  is_verified: Joi.alternatives().try(Joi.boolean(), Joi.string().valid('true', 'false')).optional(),
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(20),
 });
