@@ -18,6 +18,8 @@ import './modules/audit_log/audit_log.model.js';
 import './modules/outbox/outbox_event.model.js';
 import './modules/user_devices/user_device.model.js';
 import './modules/complaint_master/index.js';
+import './modules/business_category/business_search_synonym.model.js';
+import './modules/business_category/business_search_log.model.js';
 let httpServer;
 let io;
 let shuttingDown = false;

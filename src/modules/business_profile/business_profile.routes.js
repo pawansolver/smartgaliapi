@@ -1,277 +1,126 @@
 import express from 'express';
 import * as businessProfileController from './business_profile.controller.js';
 import { uploadImage } from '../../utils/fileUpload.js';
+import { authenticate, optionalAuthenticate } from '../../middleware/auth.middleware.js';
+import { requireBusinessOwnership } from '../../middleware/businessAuth.middleware.js';
+import { requireSocietyRole } from '../../middleware/societyAuth.middleware.js';
+import SocietyBusinessAccess from './society_business_access.model.js';
+import { errorResponse } from '../../utils/response.js';
 
 const router = express.Router();
 
-/**
- * @swagger
- * tags:
- *   name: BusinessProfiles
- *   description: Business Profile management APIs
- */
+const attachBusinessIdParam = (req, res, next) => {
+  req.params.businessId = req.params.id;
+  return requireBusinessOwnership(req, res, next);
+};
 
-/**
- * @swagger
- * /api/v1/business-profile:
- *   post:
- *     summary: Create a new business profile
- *     tags: [BusinessProfiles]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - business_name
- *             properties:
- *               user_id:
- *                 type: integer
- *               business_name:
- *                 type: string
- *               category_id:
- *                 type: integer
- *               description:
- *                 type: string
- *               address:
- *                 type: string
- *               latitude:
- *                 type: number
- *               longitude:
- *                 type: number
- *               logo:
- *                 type: string
- *               is_verified:
- *                 type: boolean
- *               created_by:
- *                 type: integer
- *     responses:
- *       201:
- *         description: Business profile created successfully
- */
-router.post('/', uploadImage('business').single('logo'), businessProfileController.createProfile);
+const loadSocietyAccessContext = async (req, res, next) => {
+  try {
+    const access = await SocietyBusinessAccess.findOne({
+      where: { id: req.params.accessId, is_deleted: false },
+    });
+    if (!access) {
+      return errorResponse(res, 404, 'Society business access request not found.');
+    }
+    req.societyBusinessAccess = access;
+    req.params.societyId = access.society_id;
+    req.body = req.body || {};
+    req.body.society_id = access.society_id;
+    return requireSocietyRole(['admin'])(req, res, next);
+  } catch (err) {
+    return next(err);
+  }
+};
 
-/**
- * @swagger
- * /api/v1/business-profile:
- *   get:
- *     summary: Get all active business profiles
- *     tags: [BusinessProfiles]
- *     responses:
- *       200:
- *         description: A list of business profiles
- */
-router.get('/', businessProfileController.getAllProfiles);
+// Create & list profiles
+router.post(
+  '/',
+  optionalAuthenticate,
+  uploadImage('business').single('logo'),
+  businessProfileController.createProfile
+);
+router.get('/', optionalAuthenticate, businessProfileController.getAllProfiles);
 
-/**
- * @swagger
- * /api/v1/business-profile/{id}:
- *   get:
- *     summary: Get a business profile by ID
- *     tags: [BusinessProfiles]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Business profile data
- *       404:
- *         description: Business profile not found
- */
-router.get('/:id', businessProfileController.getProfileById);
+// Location-aware nearby discovery & coordinate pin resolution (must precede '/:id')
+router.get('/resolve-pin', optionalAuthenticate, businessProfileController.resolvePinLocation);
+router.get('/nearby', optionalAuthenticate, businessProfileController.getNearbyBusinesses);
+router.get('/search-suggestions', optionalAuthenticate, businessProfileController.getSearchSuggestions);
 
-/**
- * @swagger
- * /api/v1/business-profile/{id}:
- *   put:
- *     summary: Update a business profile
- *     tags: [BusinessProfiles]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               business_name:
- *                 type: string
- *               category_id:
- *                 type: integer
- *               description:
- *                 type: string
- *               address:
- *                 type: string
- *               latitude:
- *                 type: number
- *               longitude:
- *                 type: number
- *               logo:
- *                 type: string
- *               is_verified:
- *                 type: boolean
- *               updated_by:
- *                 type: integer
- *     responses:
- *       200:
- *         description: Business profile updated successfully
- *       404:
- *         description: Business profile not found
- */
-router.put('/:id', uploadImage('business').single('logo'), businessProfileController.updateProfile);
+// Current owner profile
+router.get('/me', authenticate, businessProfileController.getMyProfile);
 
-/**
- * @swagger
- * /api/v1/business-profile/{id}:
- *   delete:
- *     summary: Soft delete a business profile
- *     tags: [BusinessProfiles]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               deletedRemarks:
- *                 type: string
- *               updated_by:
- *                 type: integer
- *     responses:
- *       200:
- *         description: Business profile deleted successfully (soft delete)
- *       404:
- *         description: Business profile not found
- */
-router.delete('/:id', businessProfileController.deleteProfile);
+// Resident Follow & Shop Updates routes (must precede '/:id')
+router.get('/following/me', authenticate, businessProfileController.getFollowedBusinesses);
+router.get('/following/updates', authenticate, businessProfileController.getFollowedBusinessUpdates);
 
-/**
- * @swagger
- * /api/v1/business-profile/{id}/approve:
- *   put:
- *     summary: Approve a business profile
- *     tags: [BusinessProfiles]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               updated_by:
- *                 type: integer
- *     responses:
- *       200:
- *         description: Business profile approved successfully
- *       404:
- *         description: Business profile not found
- */
+// Society Admin business access moderation routes (must precede '/:id')
+router.get(
+  '/society-access/requests',
+  authenticate,
+  requireSocietyRole(['admin', 'committee']),
+  businessProfileController.listSocietyBusinessRequests
+);
+router.post(
+  '/society-access/:accessId/approve',
+  authenticate,
+  loadSocietyAccessContext,
+  businessProfileController.approveSocietyAccess
+);
+router.post(
+  '/society-access/:accessId/reject',
+  authenticate,
+  loadSocietyAccessContext,
+  businessProfileController.rejectSocietyAccess
+);
+router.post(
+  '/society-access/:accessId/suspend',
+  authenticate,
+  loadSocietyAccessContext,
+  businessProfileController.suspendSocietyAccess
+);
+router.post(
+  '/society-access/:accessId/revoke',
+  authenticate,
+  loadSocietyAccessContext,
+  businessProfileController.revokeSocietyAccess
+);
+
+// Single business profile CRUD, follow & coverage
+router.get('/:id', optionalAuthenticate, businessProfileController.getProfileById);
+router.post('/:id/follow', authenticate, businessProfileController.followBusiness);
+router.delete('/:id/follow', authenticate, businessProfileController.unfollowBusiness);
+router.put(
+  '/:id',
+  optionalAuthenticate,
+  uploadImage('business').single('logo'),
+  businessProfileController.updateProfile
+);
+router.delete('/:id', authenticate, attachBusinessIdParam, businessProfileController.deleteProfile);
+
+// Business location & coverage configuration routes
+router.get('/:id/coverage', optionalAuthenticate, businessProfileController.getBusinessCoverage);
+router.put(
+  '/:id/coverage',
+  authenticate,
+  attachBusinessIdParam,
+  businessProfileController.updateBusinessCoverage
+);
+router.get(
+  '/:id/society-access',
+  optionalAuthenticate,
+  businessProfileController.listBusinessSocietyAccess
+);
+router.post(
+  '/:id/society-access',
+  authenticate,
+  attachBusinessIdParam,
+  businessProfileController.requestSocietyAccess
+);
+
+// Moderation & featured status actions
 router.put('/:id/approve', businessProfileController.approveProfile);
-
-/**
- * @swagger
- * /api/v1/business-profile/{id}/reject:
- *   put:
- *     summary: Reject a business profile
- *     tags: [BusinessProfiles]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               rejectRemarks:
- *                 type: string
- *               updated_by:
- *                 type: integer
- *     responses:
- *       200:
- *         description: Business profile rejected successfully
- *       404:
- *         description: Business profile not found
- */
 router.put('/:id/reject', businessProfileController.rejectProfile);
-
-/**
- * @swagger
- * /api/v1/business-profile/{id}/feature:
- *   put:
- *     summary: Feature a business profile
- *     tags: [BusinessProfiles]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               updated_by:
- *                 type: integer
- *     responses:
- *       200:
- *         description: Business profile featured successfully
- *       404:
- *         description: Business profile not found
- */
 router.put('/:id/feature', businessProfileController.featureProfile);
-
-/**
- * @swagger
- * /api/v1/business-profile/{id}/unfeature:
- *   put:
- *     summary: Unfeature a business profile
- *     tags: [BusinessProfiles]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               updated_by:
- *                 type: integer
- *     responses:
- *       200:
- *         description: Business profile unfeatured successfully
- *       404:
- *         description: Business profile not found
- */
 router.put('/:id/unfeature', businessProfileController.unfeatureProfile);
 
 export default router;
-

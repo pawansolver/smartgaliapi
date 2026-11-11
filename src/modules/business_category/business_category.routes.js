@@ -1,136 +1,53 @@
 import express from 'express';
 import * as businessCategoryController from './business_category.controller.js';
 import { uploadImage } from '../../utils/fileUpload.js';
+import {
+  authenticate,
+  optionalAuthenticate,
+  requireGlobalAdmin,
+} from '../../middleware/auth.middleware.js';
 
 const router = express.Router();
 
 /**
- * @swagger
- * tags:
- *   name: BusinessCategories
- *   description: Business Category management APIs
+ * Public/Merchant Read Endpoints:
+ * Dynamic Category Specification Templates, Live Search Synonyms & Category Catalog
  */
-
-/**
- * @swagger
- * /api/v1/business-category:
- *   post:
- *     summary: Create a new business category
- *     tags: [BusinessCategories]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *             properties:
- *               name:
- *                 type: string
- *               icon:
- *                 type: string
- *               created_by:
- *                 type: integer
- *     responses:
- *       201:
- *         description: Business category created successfully
- */
-router.post('/', uploadImage('category').single('icon'), businessCategoryController.createCategory);
-
-/**
- * @swagger
- * /api/v1/business-category:
- *   get:
- *     summary: Get all active business categories
- *     tags: [BusinessCategories]
- *     responses:
- *       200:
- *         description: A list of business categories
- */
+router.get('/templates', businessCategoryController.getCategoryTemplates);
+router.get('/synonyms', optionalAuthenticate, businessCategoryController.listSearchSynonyms);
+router.post('/synonyms', authenticate, requireGlobalAdmin, businessCategoryController.createSearchSynonym);
+router.put('/synonyms/:synonymId', authenticate, requireGlobalAdmin, businessCategoryController.updateSearchSynonym);
+router.delete('/synonyms/:synonymId', authenticate, requireGlobalAdmin, businessCategoryController.deleteSearchSynonym);
+router.get('/search-analytics', authenticate, requireGlobalAdmin, businessCategoryController.getSearchAnalytics);
+router.get('/:id/specifications', businessCategoryController.getCategorySpecifications);
 router.get('/', businessCategoryController.getAllCategories);
-
-/**
- * @swagger
- * /api/v1/business-category/{id}:
- *   get:
- *     summary: Get a business category by ID
- *     tags: [BusinessCategories]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Business category data
- *       404:
- *         description: Business category not found
- */
 router.get('/:id', businessCategoryController.getCategoryById);
 
 /**
- * @swagger
- * /api/v1/business-category/{id}:
- *   put:
- *     summary: Update a business category
- *     tags: [BusinessCategories]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *               icon:
- *                 type: string
- *               updated_by:
- *                 type: integer
- *     responses:
- *       200:
- *         description: Business category updated successfully
- *       404:
- *         description: Business category not found
+ * Web Super Admin Management Endpoints:
+ * Only Platform Super Admins can create, update, or soft-delete categories
  */
-router.put('/:id', uploadImage('category').single('icon'), businessCategoryController.updateCategory);
+router.post(
+  '/',
+  authenticate,
+  requireGlobalAdmin,
+  uploadImage('category').single('icon'),
+  businessCategoryController.createCategory
+);
 
-/**
- * @swagger
- * /api/v1/business-category/{id}:
- *   delete:
- *     summary: Soft delete a business category
- *     tags: [BusinessCategories]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               deletedRemarks:
- *                 type: string
- *               updated_by:
- *                 type: integer
- *     responses:
- *       200:
- *         description: Business category deleted successfully (soft delete)
- *       404:
- *         description: Business category not found
- */
-router.delete('/:id', businessCategoryController.deleteCategory);
+router.put(
+  '/:id',
+  authenticate,
+  requireGlobalAdmin,
+  uploadImage('category').single('icon'),
+  businessCategoryController.updateCategory
+);
+
+router.delete(
+  '/:id',
+  authenticate,
+  requireGlobalAdmin,
+  businessCategoryController.deleteCategory
+);
 
 export default router;

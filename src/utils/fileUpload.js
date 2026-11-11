@@ -142,6 +142,16 @@ export const uploadCommunityDocument = (folderName = 'community') =>
 export const uploadCommunityMedia = (folderName = 'community') =>
   uploadTypedFile(folderName, COMMUNITY_MEDIA_EXTENSIONS, 100 * 1024 * 1024);
 
+export const uploadProductVideo = (folderName = 'business_products') =>
+  uploadTypedFile(folderName, {
+    'video/mp4': '.mp4',
+    'video/quicktime': '.mov',
+    'video/webm': '.webm',
+  }, 50 * 1024 * 1024);
+
+export const getMediaUrl = (req, fileOrFolder, folderOrFilename = 'general') =>
+  getImageUrl(req, fileOrFolder, folderOrFilename);
+
 /**
  * Helper to get the full URL of the uploaded image.
  * 

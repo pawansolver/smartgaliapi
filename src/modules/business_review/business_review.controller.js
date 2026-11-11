@@ -3,18 +3,42 @@ import * as businessReviewService from './business_review.service.js';
 
 export const createReview = async (req, res, next) => {
   try {
-    const review = await businessReviewService.createReview(req.body);
+    const payload = { ...req.body };
+    if (req.user?.id && !payload.user_id && !payload.userId) {
+      payload.user_id = req.user.id;
+    }
+    const review = await businessReviewService.createReview(payload);
     return successResponse(res, 201, 'Business review added successfully', review);
   } catch (error) {
+    if (error.message && (error.message.includes('required') || error.message.includes('between 1 and 5'))) {
+      return errorResponse(res, 400, error.message);
+    }
     next(error);
   }
 };
 
 export const getAllReviews = async (req, res, next) => {
   try {
-    const reviews = await businessReviewService.getAllReviews();
+    const reviews = await businessReviewService.getAllReviews(req.query);
     return successResponse(res, 200, 'Business reviews fetched successfully', reviews);
   } catch (error) {
+    next(error);
+  }
+};
+
+export const getReviewsByBusiness = async (req, res, next) => {
+  try {
+    const result = await businessReviewService.getReviewsByBusinessId(req.params.businessId);
+    return res.status(200).json({
+      success: true,
+      message: 'Business reviews fetched successfully',
+      data: result.items,
+      summary: result.summary,
+    });
+  } catch (error) {
+    if (error.message && error.message.includes('required')) {
+      return errorResponse(res, 400, error.message);
+    }
     next(error);
   }
 };

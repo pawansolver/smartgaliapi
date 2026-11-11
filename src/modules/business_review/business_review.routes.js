@@ -1,5 +1,6 @@
 import express from 'express';
 import * as businessReviewController from './business_review.controller.js';
+import { optionalAuthenticate } from '../../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -42,7 +43,7 @@ const router = express.Router();
  *       201:
  *         description: Business review added successfully
  */
-router.post('/', businessReviewController.createReview);
+router.post('/', optionalAuthenticate, businessReviewController.createReview);
 
 /**
  * @swagger
@@ -55,6 +56,8 @@ router.post('/', businessReviewController.createReview);
  *         description: A list of business reviews
  */
 router.get('/', businessReviewController.getAllReviews);
+
+router.get('/business/:businessId', businessReviewController.getReviewsByBusiness);
 
 /**
  * @swagger

@@ -29,6 +29,8 @@
     "migrate:auth:down": "node scripts/migrateAuth.js down",
     "migrate:community:up": "node scripts/migrateCommunity.js up",
     "migrate:community:down": "node scripts/migrateCommunity.js down",
+    "migrate:products:up": "node scripts/migrateBusinessProducts.js up",
+    "migrate:products:down": "node scripts/migrateBusinessProducts.js down",
     "test": "node --test \"test/*.test.js\"",
     "test:ratelimit:redis": "node --test \"test/integration/rateLimit.redis.integration.test.js\"",
     "test:presence:redis": "node --test \"test/integration/presence.redis.integration.test.js\"",

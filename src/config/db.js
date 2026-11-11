@@ -32,6 +32,12 @@ const sequelize = new Sequelize(env.db.name, env.db.user, env.db.password, {
     dateStrings: true,
     typeCast: true,
     connectTimeout: 60000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000,
+  },
+  retry: {
+    match: [/ECONNRESET/i, /ETIMEDOUT/i, /EPIPE/i, /PROTOCOL_CONNECTION_LOST/i],
+    max: 2,
   },
   pool: {
     max: process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX) : (env.isProduction ? 10 : 3),
